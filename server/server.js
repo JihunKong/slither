@@ -12,7 +12,7 @@ const HOST = '0.0.0.0';
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
 const MAX_PLAYERS = 20;
-const SNAKE_SPEED = 2;
+const SNAKE_SPEED = 3;
 const FOOD_COUNT = 50;
 
 app.use(express.static(path.join(__dirname, '../client')));
@@ -179,8 +179,9 @@ io.on('connection', (socket) => {
     
     socket.on('updateDirection', (direction) => {
         const player = gameState.players.get(socket.id);
-        if (player && player.alive) {
+        if (player && player.alive && typeof direction === 'number') {
             player.direction = direction;
+            console.log(`Player ${socket.id} direction updated to ${direction}`);
         }
     });
     

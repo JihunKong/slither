@@ -177,11 +177,37 @@ function handleMouseMove(e) {
     }
 }
 
+// 터치 이벤트 지원 추가
+function handleTouchMove(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    mouseX = touch.clientX - rect.left;
+    mouseY = touch.clientY - rect.top;
+    
+    if (myPlayer && myPlayer.alive) {
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
+        socket.emit('updateDirection', angle);
+    }
+}
+
 canvas.addEventListener('mousemove', handleMouseMove);
+canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
 respawnBtn.addEventListener('click', () => {
     socket.emit('respawn');
     respawnBtn.style.display = 'none';
+});
+
+// 디버깅을 위한 연결 상태 확인
+socket.on('connect', () => {
+    console.log('Connected to server');
+});
+
+socket.on('disconnect', () => {
+    console.log('Disconnected from server');
 });
 
 connectToServer();
