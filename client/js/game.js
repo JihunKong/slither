@@ -379,6 +379,8 @@ function updateStartButton() {
         existingBtn.remove();
     }
     
+    console.log('updateStartButton - isHost:', isHost, 'gameStarted:', gameStarted);
+    
     if (isHost && !gameStarted) {
         const startBtn = document.createElement('button');
         startBtn.id = 'startGameBtn';
@@ -396,14 +398,23 @@ function updateStartButton() {
             margin-top: 20px;
         `;
         startBtn.addEventListener('click', () => {
+            console.log('Start button clicked!');
             if (socket && socket.connected) {
+                console.log('Emitting startGame event');
                 socket.emit('startGame');
+            } else {
+                console.log('Socket not connected');
             }
         });
         
         // 순위표 아래에 추가
         const leaderboard = document.getElementById('leaderboard');
-        leaderboard.insertAdjacentElement('afterend', startBtn);
+        if (leaderboard) {
+            leaderboard.insertAdjacentElement('afterend', startBtn);
+            console.log('Start button added to DOM');
+        } else {
+            console.error('Leaderboard element not found');
+        }
     }
 }
 

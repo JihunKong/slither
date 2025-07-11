@@ -475,6 +475,11 @@ io.on('connection', (socket) => {
     
     // 방장의 게임 시작 요청
     socket.on('startGame', () => {
+        console.log('startGame received from:', socket.id);
+        console.log('Current roomHost:', gameState.roomHost);
+        console.log('gameStarted:', gameState.gameStarted);
+        console.log('players.size:', gameState.players.size);
+        
         if (socket.id === gameState.roomHost && !gameState.gameStarted) {
             // 솔로 플레이 허용 (1명 이상이면 시작 가능)
             if (gameState.players.size >= 1) {
@@ -486,6 +491,8 @@ io.on('connection', (socket) => {
                     playerCount: gameState.players.size
                 });
             }
+        } else {
+            console.log('Start game conditions not met');
         }
     });
     
@@ -499,7 +506,9 @@ io.on('connection', (socket) => {
     // 즉시 현재 게임 상태 전송
     socket.emit('gameUpdate', {
         players: Array.from(gameState.players.values()),
-        food: gameState.food
+        food: gameState.food,
+        gameStarted: gameState.gameStarted,
+        roomHost: gameState.roomHost
     });
     
     socket.on('respawn', () => {
