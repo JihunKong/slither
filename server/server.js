@@ -81,26 +81,31 @@ function createSnake(playerId) {
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
 
-    // 직접 첫 번째 세그먼트를 업데이트
+    // 이전 위치들을 저장
+    const previousPositions = snake.segments.map(segment => ({
+        x: segment.x,
+        y: segment.y
+    }));
+
+    // 머리 이동
+    const head = snake.segments[0];
     const moveX = Math.cos(snake.direction) * snake.speed;
     const moveY = Math.sin(snake.direction) * snake.speed;
     
-    // 새로운 머리 위치 계산
-    const newHead = {
-        x: snake.segments[0].x + moveX,
-        y: snake.segments[0].y + moveY
-    };
+    head.x += moveX;
+    head.y += moveY;
 
     // 경계 처리
-    if (newHead.x < 0) newHead.x = GAME_WIDTH;
-    if (newHead.x > GAME_WIDTH) newHead.x = 0;
-    if (newHead.y < 0) newHead.y = GAME_HEIGHT;
-    if (newHead.y > GAME_HEIGHT) newHead.y = 0;
+    if (head.x < 0) head.x = GAME_WIDTH;
+    if (head.x > GAME_WIDTH) head.x = 0;
+    if (head.y < 0) head.y = GAME_HEIGHT;
+    if (head.y > GAME_HEIGHT) head.y = 0;
 
-    // 새 머리를 앞에 추가하고 꼬리 제거
-    snake.segments.unshift(newHead);
-    snake.segments.pop();
-    
+    // 나머지 세그먼트들이 앞 세그먼트의 이전 위치로 이동
+    for (let i = 1; i < snake.segments.length; i++) {
+        snake.segments[i].x = previousPositions[i - 1].x;
+        snake.segments[i].y = previousPositions[i - 1].y;
+    }
 }
 
 function checkFoodCollision(snake) {
@@ -111,9 +116,15 @@ function checkFoodCollision(snake) {
         const distance = Math.sqrt(Math.pow(head.x - food.x, 2) + Math.pow(head.y - food.y, 2));
         
         if (distance < 15) {
-            snake.segments.push({ ...snake.segments[snake.segments.length - 1] });
+            // 꼬리 끝에 새 세그먼트 추가 (마지막 세그먼트와 같은 위치)
+            const lastSegment = snake.segments[snake.segments.length - 1];
+            snake.segments.push({
+                x: lastSegment.x,
+                y: lastSegment.y
+            });
             snake.score += 10;
             
+            // 음식 재생성
             gameState.food[i] = {
                 id: food.id,
                 ...generateRandomPosition(),
@@ -193,6 +204,10 @@ const gameLoopInterval = setInterval(() => {
             if (gameState.players.size > 0) {
                 const firstPlayer = Array.from(gameState.players.values())[0];
                 console.log(`  Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), dir=${firstPlayer.direction.toFixed(2)}, speed=${firstPlayer.speed}`);
+                // 처음 3개 세그먼트 위치 확인
+                if (frameCount % 300 === 0) {
+                    console.log(`  Segments: ${firstPlayer.segments.slice(0, 3).map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
+                }
             }
         }
     } catch (error) {
