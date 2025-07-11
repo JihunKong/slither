@@ -76,31 +76,30 @@ function createSnake(playerId) {
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
 
-    const head = { ...snake.segments[0] };
+    // 직접 첫 번째 세그먼트를 업데이트
     const moveX = Math.cos(snake.direction) * snake.speed;
     const moveY = Math.sin(snake.direction) * snake.speed;
     
-    // 디버깅: 처음 몇 프레임 동안 움직임 로그
-    if (frameCount < 5) {
-        console.log(`Update snake: dir=${snake.direction}, speed=${snake.speed}, moveX=${moveX}, moveY=${moveY}`);
-        console.log(`  Before: x=${head.x}, y=${head.y}`);
-    }
-    
-    head.x += moveX;
-    head.y += moveY;
+    // 새로운 머리 위치 계산
+    const newHead = {
+        x: snake.segments[0].x + moveX,
+        y: snake.segments[0].y + moveY
+    };
 
     // 경계 처리
-    if (head.x < 0) head.x = GAME_WIDTH;
-    if (head.x > GAME_WIDTH) head.x = 0;
-    if (head.y < 0) head.y = GAME_HEIGHT;
-    if (head.y > GAME_HEIGHT) head.y = 0;
-    
-    if (frameCount < 5) {
-        console.log(`  After: x=${head.x}, y=${head.y}`);
-    }
+    if (newHead.x < 0) newHead.x = GAME_WIDTH;
+    if (newHead.x > GAME_WIDTH) newHead.x = 0;
+    if (newHead.y < 0) newHead.y = GAME_HEIGHT;
+    if (newHead.y > GAME_HEIGHT) newHead.y = 0;
 
-    snake.segments.unshift(head);
+    // 새 머리를 앞에 추가하고 꼬리 제거
+    snake.segments.unshift(newHead);
     snake.segments.pop();
+    
+    // 디버깅 - 실제로 함수가 호출되는지 확인
+    if (frameCount % 300 === 0) { // 5초마다
+        console.log(`updateSnakePosition called: head moved from (${snake.segments[1].x.toFixed(1)}, ${snake.segments[1].y.toFixed(1)}) to (${newHead.x.toFixed(1)}, ${newHead.y.toFixed(1)})`);
+    }
 }
 
 function checkFoodCollision(snake) {
@@ -163,6 +162,11 @@ console.log('Starting game loop...');
 // 간단한 게임 루프
 const gameLoopInterval = setInterval(() => {
     try {
+        // 플레이어 수 확인
+        if (frameCount % 300 === 0 && gameState.players.size > 0) {
+            console.log(`Game loop: ${gameState.players.size} players to update`);
+        }
+        
         // 모든 플레이어 업데이트
         gameState.players.forEach(snake => {
             if (snake.alive) {
@@ -173,11 +177,19 @@ const gameLoopInterval = setInterval(() => {
                 updateSnakePosition(snake);
                 
                 // 위치 변화 확인 - 매 프레임마다 체크
-                const deltaX = snake.segments[0].x - oldX;
-                const deltaY = snake.segments[0].y - oldY;
-                if ((Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) && frameCount % 60 === 0) {
-                    console.log(`Snake moved: deltaX=${deltaX.toFixed(2)}, deltaY=${deltaY.toFixed(2)}`);
-                    console.log(`  Segments: ${snake.segments.map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
+                const newX = snake.segments[0].x;
+                const newY = snake.segments[0].y;
+                const deltaX = newX - oldX;
+                const deltaY = newY - oldY;
+                
+                // 움직임이 있을 때마다 로그
+                if (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
+                    if (frameCount % 60 === 0) {
+                        console.log(`Snake ${snake.id} moved: from (${oldX.toFixed(1)},${oldY.toFixed(1)}) to (${newX.toFixed(1)},${newY.toFixed(1)})`);
+                        console.log(`  Delta: x=${deltaX.toFixed(2)}, y=${deltaY.toFixed(2)}`);
+                    }
+                } else if (frameCount % 300 === 0) {
+                    console.log(`WARNING: Snake ${snake.id} NOT MOVING! Position: (${newX.toFixed(1)},${newY.toFixed(1)})`);
                 }
                 
                 checkFoodCollision(snake);
