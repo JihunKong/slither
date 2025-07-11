@@ -142,6 +142,8 @@ function checkSnakeCollisions() {
     }
 }
 
+let loopCount = 0;
+
 function gameLoop() {
     const currentTime = Date.now();
     const deltaTime = currentTime - gameState.lastUpdateTime;
@@ -156,6 +158,13 @@ function gameLoop() {
         });
         
         checkSnakeCollisions();
+        
+        // 매 60프레임마다 한 번씩 상태 로그
+        if (loopCount % 60 === 0 && gameState.players.size > 0) {
+            const firstPlayer = Array.from(gameState.players.values())[0];
+            console.log(`Game loop #${loopCount}: Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), direction: ${firstPlayer.direction.toFixed(2)}`);
+        }
+        loopCount++;
     }
     
     const gameData = {
@@ -204,6 +213,9 @@ io.on('connection', (socket) => {
         const player = gameState.players.get(socket.id);
         if (player && player.alive && typeof direction === 'number') {
             player.direction = direction;
+            console.log(`Player ${socket.id} direction updated to: ${direction.toFixed(2)}`);
+        } else {
+            console.log(`Failed to update direction. Player exists: ${!!player}, Alive: ${player?.alive}, Direction type: ${typeof direction}`);
         }
     });
     
