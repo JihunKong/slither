@@ -310,34 +310,8 @@ function drawMinimap() {
 }
 
 function drawBoostBar() {
-    if (!myPlayer || !myPlayer.alive) return;
-    
-    const barWidth = 200;
-    const barHeight = 10;
-    const barX = (canvas.width - barWidth) / 2;
-    const barY = canvas.height - 30;
-    
-    // 배경
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(barX, barY, barWidth, barHeight);
-    
-    // 에너지 바
-    const energy = myPlayer.boostEnergy || 100;
-    const fillWidth = (energy / 100) * barWidth;
-    ctx.fillStyle = energy > 20 ? '#4CAF50' : '#FF6B6B';
-    ctx.fillRect(barX, barY, fillWidth, barHeight);
-    
-    // 테두리
-    ctx.strokeStyle = '#444';
-    ctx.strokeRect(barX, barY, barWidth, barHeight);
-    
-    // 부스트 상태 표시
-    if (myPlayer.isBoosting) {
-        ctx.fillStyle = '#FFD700';
-        ctx.font = '12px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('BOOST!', canvas.width / 2, barY - 5);
-    }
+    // 부스트 바를 제거하여 하단의 초록색 줄 문제 해결
+    return;
 }
 
 function draw() {
@@ -410,25 +384,26 @@ function updateStartButton() {
         startBtn.id = 'startGameBtn';
         startBtn.textContent = '게임 시작';
         startBtn.style.cssText = `
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 15px 30px;
-            font-size: 20px;
+            width: 100%;
+            padding: 10px;
             background-color: #4CAF50;
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            z-index: 100;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            margin-top: 20px;
         `;
         startBtn.addEventListener('click', () => {
             if (socket && socket.connected) {
                 socket.emit('startGame');
             }
         });
-        document.body.appendChild(startBtn);
+        
+        // 순위표 아래에 추가
+        const leaderboard = document.getElementById('leaderboard');
+        leaderboard.insertAdjacentElement('afterend', startBtn);
     }
 }
 

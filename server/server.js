@@ -476,7 +476,8 @@ io.on('connection', (socket) => {
     // 방장의 게임 시작 요청
     socket.on('startGame', () => {
         if (socket.id === gameState.roomHost && !gameState.gameStarted) {
-            if (gameState.players.size >= 2) {
+            // 솔로 플레이 허용 (1명 이상이면 시작 가능)
+            if (gameState.players.size >= 1) {
                 gameState.gameStarted = true;
                 gameState.gameStartTime = Date.now();
                 console.log('Game started by host');
@@ -484,8 +485,6 @@ io.on('connection', (socket) => {
                     startTime: gameState.gameStartTime,
                     playerCount: gameState.players.size
                 });
-            } else {
-                socket.emit('needMorePlayers');
             }
         }
     });
