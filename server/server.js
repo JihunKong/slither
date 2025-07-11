@@ -57,13 +57,18 @@ function createSnake(playerId) {
     // 초기 방향을 랜덤하게 설정하여 움직임 확인
     const initialDirection = Math.random() * Math.PI * 2;
     
+    // 초기 세그먼트를 방향의 반대로 배치
+    const segments = [];
+    for (let i = 0; i < 3; i++) {
+        segments.push({
+            x: position.x - Math.cos(initialDirection) * i * 10,
+            y: position.y - Math.sin(initialDirection) * i * 10
+        });
+    }
+    
     return {
         id: playerId,
-        segments: [
-            { x: position.x, y: position.y },
-            { x: position.x - 10, y: position.y },
-            { x: position.x - 20, y: position.y }
-        ],
+        segments: segments,
         direction: initialDirection,
         speed: SNAKE_SPEED,
         color: generateRandomColor(),
@@ -96,10 +101,6 @@ function updateSnakePosition(snake) {
     snake.segments.unshift(newHead);
     snake.segments.pop();
     
-    // 디버깅 - 실제로 함수가 호출되는지 확인
-    if (frameCount % 300 === 0) { // 5초마다
-        console.log(`updateSnakePosition called: head moved from (${snake.segments[1].x.toFixed(1)}, ${snake.segments[1].y.toFixed(1)}) to (${newHead.x.toFixed(1)}, ${newHead.y.toFixed(1)})`);
-    }
 }
 
 function checkFoodCollision(snake) {
@@ -164,36 +165,11 @@ const gameLoopInterval = setInterval(() => {
     frameCount++;
     
     try {
-        // 플레이어 수 확인
-        if (frameCount % 300 === 0 && gameState.players.size > 0) {
-            console.log(`Game loop: ${gameState.players.size} players to update`);
-        }
         
         // 모든 플레이어 업데이트
         gameState.players.forEach(snake => {
             if (snake.alive) {
-                // 이전 위치 저장 (디버깅용)
-                const oldX = snake.segments[0].x;
-                const oldY = snake.segments[0].y;
-                
                 updateSnakePosition(snake);
-                
-                // 위치 변화 확인 - 매 프레임마다 체크
-                const newX = snake.segments[0].x;
-                const newY = snake.segments[0].y;
-                const deltaX = newX - oldX;
-                const deltaY = newY - oldY;
-                
-                // 움직임이 있을 때마다 로그
-                if (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
-                    if (frameCount % 60 === 0) {
-                        console.log(`Snake ${snake.id} moved: from (${oldX.toFixed(1)},${oldY.toFixed(1)}) to (${newX.toFixed(1)},${newY.toFixed(1)})`);
-                        console.log(`  Delta: x=${deltaX.toFixed(2)}, y=${deltaY.toFixed(2)}`);
-                    }
-                } else if (frameCount % 300 === 0) {
-                    console.log(`WARNING: Snake ${snake.id} NOT MOVING! Position: (${newX.toFixed(1)},${newY.toFixed(1)})`);
-                }
-                
                 checkFoodCollision(snake);
             }
         });
@@ -250,9 +226,6 @@ io.on('connection', (socket) => {
     const snake = createSnake(socket.id);
     gameState.players.set(socket.id, snake);
     
-    console.log(`Snake created at: ${snake.segments[0].x.toFixed(1)}, ${snake.segments[0].y.toFixed(1)}, direction: ${snake.direction.toFixed(2)}`);
-    console.log(`Snake segments: ${snake.segments.map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
-    
     socket.emit('init', {
         playerId: socket.id,
         gameWidth: GAME_WIDTH,
@@ -263,9 +236,6 @@ io.on('connection', (socket) => {
         const player = gameState.players.get(socket.id);
         if (player && player.alive && typeof direction === 'number') {
             player.direction = direction;
-            console.log(`Player ${socket.id} direction updated to: ${direction.toFixed(2)}`);
-        } else {
-            console.log(`Failed to update direction. Player exists: ${!!player}, Alive: ${player?.alive}, Direction type: ${typeof direction}`);
         }
     });
     
@@ -274,18 +244,6 @@ io.on('connection', (socket) => {
         players: Array.from(gameState.players.values()),
         food: gameState.food
     });
-    
-    // 테스트: 3초 후 뱀 위치 확인
-    setTimeout(() => {
-        const testSnake = gameState.players.get(socket.id);
-        if (testSnake) {
-            console.log(`After 3 seconds - Snake ${socket.id} at: ${testSnake.segments[0].x.toFixed(1)}, ${testSnake.segments[0].y.toFixed(1)}`);
-            
-            // 강제로 위치 변경 테스트
-            testSnake.segments[0].x += 50;
-            console.log(`Forced move - New position: ${testSnake.segments[0].x.toFixed(1)}, ${testSnake.segments[0].y.toFixed(1)}`);
-        }
-    }, 3000);
     
     socket.on('respawn', () => {
         const player = gameState.players.get(socket.id);
