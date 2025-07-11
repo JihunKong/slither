@@ -9,7 +9,8 @@ const io = socketIo(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    transports: ['polling', 'websocket'] // polling을 우선으로
 });
 
 const PORT = process.env.PORT || 3000;

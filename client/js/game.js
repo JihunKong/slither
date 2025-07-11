@@ -23,7 +23,7 @@ function connectToServer() {
     console.log('Attempting to connect to server...');
     
     socket = io({
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'], // polling 우선
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000
