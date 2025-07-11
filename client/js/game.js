@@ -8,8 +8,8 @@ const gameFullMessage = document.getElementById('gameFullMessage');
 
 let socket;
 let playerId;
-let gameWidth = 800;
-let gameHeight = 600;
+let gameWidth = 2400;
+let gameHeight = 1800;
 let camera = { x: 0, y: 0 };
 let mouseX = 0;
 let mouseY = 0;
@@ -84,7 +84,17 @@ function connectToServer() {
 
 function updateUI() {
     if (myPlayer) {
-        scoreElement.textContent = myPlayer.score;
+        // displayScore 표시 (보너스 적용된 점수)
+        scoreElement.textContent = myPlayer.displayScore || myPlayer.score;
+        
+        // 먹은 개수에 따른 보너스 표시
+        if (myPlayer.foodEaten >= 10) {
+            let multiplier = '1.0x';
+            if (myPlayer.foodEaten >= 30) multiplier = '1.6x';
+            else if (myPlayer.foodEaten >= 20) multiplier = '1.4x';
+            else if (myPlayer.foodEaten >= 10) multiplier = '1.2x';
+            scoreElement.textContent += ` (${multiplier})`;
+        }
         
         if (!myPlayer.alive) {
             respawnBtn.style.display = 'block';
@@ -96,14 +106,14 @@ function updateUI() {
     playerCountElement.textContent = gameData.players.length;
     
     const sortedPlayers = [...gameData.players]
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => (b.displayScore || b.score) - (a.displayScore || a.score))
         .slice(0, 5);
     
     leaderboardList.innerHTML = sortedPlayers
         .map((player, index) => `
             <li>
                 <span>${index + 1}. ${player.name}</span>
-                <span>${player.score}</span>
+                <span>${player.displayScore || player.score}</span>
             </li>
         `)
         .join('');
@@ -146,11 +156,33 @@ function drawFood() {
         
         if (x > -20 && x < canvas.width + 20 && y > -20 && y < canvas.height + 20) {
             ctx.fillStyle = food.color;
-            ctx.beginPath();
-            ctx.arc(x, y, food.size, 0, Math.PI * 2);
-            ctx.fill();
+            
+            // 특별 먹이는 더 크고 빛나게
+            if (food.value && food.value > 10) {
+                // 빛나는 효과
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = food.color;
+                ctx.fillStyle = food.color;
+                ctx.beginPath();
+                ctx.arc(x, y, food.size || 8, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 내부 하이라이트
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.beginPath();
+                ctx.arc(x, y, (food.size || 8) * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // 일반 먹이
+                ctx.beginPath();
+                ctx.arc(x, y, food.size || 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
     });
+    
+    ctx.shadowBlur = 0;
 }
 
 function drawSnake(snake) {
@@ -193,6 +225,90 @@ function drawSnake(snake) {
     ctx.globalAlpha = 1;
 }
 
+function drawMinimap() {
+    const minimapSize = 150;
+    const minimapX = canvas.width - minimapSize - 10;
+    const minimapY = 10;
+    const scale = minimapSize / Math.max(gameWidth, gameHeight);
+    
+    // 미니맵 배경
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(minimapX, minimapY, minimapSize, minimapSize);
+    
+    // 미니맵 테두리
+    ctx.strokeStyle = '#444';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(minimapX, minimapY, minimapSize, minimapSize);
+    
+    // 1등 플레이어 찾기
+    const leader = [...gameData.players]
+        .sort((a, b) => (b.displayScore || b.score) - (a.displayScore || a.score))[0];
+    
+    // 모든 플레이어 표시
+    gameData.players.forEach(player => {
+        if (!player.alive) return;
+        
+        const head = player.segments[0];
+        const x = minimapX + head.x * scale;
+        const y = minimapY + head.y * scale;
+        
+        if (player === leader) {
+            // 1등은 황금색으로 크게
+            ctx.fillStyle = '#FFD700';
+            ctx.fillRect(x - 2, y - 2, 4, 4);
+        } else if (player.id === playerId) {
+            // 자신은 흰색으로
+            ctx.fillStyle = 'white';
+            ctx.fillRect(x - 2, y - 2, 4, 4);
+        } else {
+            // 다른 플레이어는 회색 점
+            ctx.fillStyle = '#666';
+            ctx.fillRect(x - 1, y - 1, 2, 2);
+        }
+    });
+    
+    // 특별 먹이 표시 (황금색)
+    ctx.fillStyle = '#FFD700';
+    gameData.food.forEach(food => {
+        if (food.value && food.value > 10) {
+            const x = minimapX + food.x * scale;
+            const y = minimapY + food.y * scale;
+            ctx.fillRect(x, y, 1, 1);
+        }
+    });
+}
+
+function drawBoostBar() {
+    if (!myPlayer || !myPlayer.alive) return;
+    
+    const barWidth = 200;
+    const barHeight = 10;
+    const barX = (canvas.width - barWidth) / 2;
+    const barY = canvas.height - 30;
+    
+    // 배경
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    
+    // 에너지 바
+    const energy = myPlayer.boostEnergy || 100;
+    const fillWidth = (energy / 100) * barWidth;
+    ctx.fillStyle = energy > 20 ? '#4CAF50' : '#FF6B6B';
+    ctx.fillRect(barX, barY, fillWidth, barHeight);
+    
+    // 테두리
+    ctx.strokeStyle = '#444';
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+    
+    // 부스트 상태 표시
+    if (myPlayer.isBoosting) {
+        ctx.fillStyle = '#FFD700';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('BOOST!', canvas.width / 2, barY - 5);
+    }
+}
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
@@ -203,6 +319,14 @@ function draw() {
     gameData.players.forEach(player => {
         drawSnake(player);
     });
+    
+    // 미니맵 그리기
+    if (gameData.players.length > 0) {
+        drawMinimap();
+    }
+    
+    // 부스트 바 그리기
+    drawBoostBar();
     
     // 디버그 정보 표시
     if (!myPlayer) {
@@ -236,7 +360,7 @@ function handleTouchMove(e) {
     mouseX = touch.clientX - rect.left;
     mouseY = touch.clientY - rect.top;
     
-    if (myPlayer && myPlayer.alive) {
+    if (myPlayer && myPlayer.alive && socket && socket.connected) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
@@ -244,8 +368,67 @@ function handleTouchMove(e) {
     }
 }
 
+function handleTouchStart(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    mouseX = touch.clientX - rect.left;
+    mouseY = touch.clientY - rect.top;
+    
+    if (myPlayer && myPlayer.alive && socket && socket.connected) {
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
+        socket.emit('updateDirection', angle);
+    }
+}
+
+// 부스트 기능을 위한 더블탭 감지
+let lastTapTime = 0;
+function handleDoubleTap(e) {
+    const currentTime = new Date().getTime();
+    const tapLength = currentTime - lastTapTime;
+    
+    if (tapLength < 300 && tapLength > 0) {
+        e.preventDefault();
+        if (myPlayer && myPlayer.alive && socket && socket.connected) {
+            socket.emit('boost', true);
+            setTimeout(() => {
+                if (socket && socket.connected) {
+                    socket.emit('boost', false);
+                }
+            }, 1000); // 1초간 부스트
+        }
+    }
+    lastTapTime = currentTime;
+}
+
+// 키보드 이벤트 (부스트)
+let isBoosting = false;
+function handleKeyDown(e) {
+    if (e.code === 'Space' && !isBoosting && myPlayer && myPlayer.alive && socket && socket.connected) {
+        e.preventDefault();
+        isBoosting = true;
+        socket.emit('boost', true);
+    }
+}
+
+function handleKeyUp(e) {
+    if (e.code === 'Space' && isBoosting) {
+        e.preventDefault();
+        isBoosting = false;
+        if (socket && socket.connected) {
+            socket.emit('boost', false);
+        }
+    }
+}
+
 canvas.addEventListener('mousemove', handleMouseMove);
 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+canvas.addEventListener('touchend', handleDoubleTap, { passive: false });
+document.addEventListener('keydown', handleKeyDown);
+document.addEventListener('keyup', handleKeyUp);
 
 respawnBtn.addEventListener('click', () => {
     if (socket && socket.connected) {

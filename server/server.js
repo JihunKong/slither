@@ -17,11 +17,11 @@ const io = socketIo(server, {
 
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
+const GAME_WIDTH = 2400;
+const GAME_HEIGHT = 1800;
 const MAX_PLAYERS = 20;
-const SNAKE_SPEED = 3;
-const FOOD_COUNT = 50;
+const SNAKE_SPEED = 3.5; // 기본 속도 증가
+const FOOD_COUNT = 150; // 맵 확장에 맞춰 먹이 증가
 
 app.use(express.static(path.join(__dirname, '../client')));
 
@@ -76,12 +76,51 @@ function createSnake(playerId) {
         color: generateRandomColor(),
         name: `Player ${gameState.players.size + 1}`,
         score: 0,
-        alive: true
+        foodEaten: 0, // 먹은 먹이 개수
+        displayScore: 0, // 보너스가 적용된 표시 점수
+        alive: true,
+        isBoosting: false, // 부스트 상태
+        boostEnergy: 100 // 부스트 에너지 (최대 100)
     };
+}
+
+function calculateSpeed(segmentCount) {
+    // 길이에 따른 속도 조정
+    if (segmentCount <= 10) return 3.5;
+    if (segmentCount <= 20) return 3.2;
+    if (segmentCount <= 30) return 2.9;
+    // 30 이상일 때는 점진적으로 감소
+    const speed = 2.6 - (segmentCount - 30) * 0.01;
+    return Math.max(2.0, speed); // 최소 속도 2.0
 }
 
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
+
+    // 길이 기반 속도 계산
+    let baseSpeed = calculateSpeed(snake.segments.length);
+    
+    // 부스트 처리
+    if (snake.isBoosting && snake.boostEnergy > 0) {
+        baseSpeed *= 1.5; // 부스트시 1.5배 속도
+        snake.boostEnergy -= 2; // 에너지 소모
+        
+        // 부스트 중에는 세그먼트를 소모 (10프레임마다 1개)
+        if (frameCount % 10 === 0 && snake.segments.length > 3) {
+            snake.segments.pop(); // 꼬리 제거
+        }
+    } else {
+        // 부스트 에너지 회복
+        if (snake.boostEnergy < 100) {
+            snake.boostEnergy = Math.min(100, snake.boostEnergy + 0.5);
+        }
+        // 부스트 종료
+        if (snake.isBoosting) {
+            snake.isBoosting = false;
+        }
+    }
+    
+    snake.speed = baseSpeed;
 
     // 이전 위치들을 저장
     const previousPositions = snake.segments.map(segment => ({
@@ -120,6 +159,13 @@ function updateSnakePosition(snake) {
     }
 }
 
+function calculateScoreMultiplier(foodEaten) {
+    if (foodEaten >= 30) return 1.6;
+    if (foodEaten >= 20) return 1.4;
+    if (foodEaten >= 10) return 1.2;
+    return 1.0;
+}
+
 function checkFoodCollision(snake) {
     const head = snake.segments[0];
     
@@ -134,15 +180,29 @@ function checkFoodCollision(snake) {
                 x: lastSegment.x,
                 y: lastSegment.y
             });
-            snake.score += 10;
             
-            // 음식 재생성
-            gameState.food[i] = {
-                id: food.id,
-                ...generateRandomPosition(),
-                color: generateRandomColor(),
-                size: 5
-            };
+            // 점수 계산
+            const foodValue = food.value || 10; // 특별 먹이는 더 높은 점수
+            snake.score += foodValue;
+            snake.foodEaten += 1;
+            
+            // 보너스 적용된 표시 점수 계산
+            const multiplier = calculateScoreMultiplier(snake.foodEaten);
+            snake.displayScore = Math.floor(snake.score * multiplier);
+            
+            // 음식 재생성 또는 제거
+            if (food.value && food.value > 10) {
+                // 특별 먹이는 제거
+                gameState.food.splice(i, 1);
+            } else {
+                // 일반 먹이는 재생성
+                gameState.food[i] = {
+                    id: food.id,
+                    ...generateRandomPosition(),
+                    color: generateRandomColor(),
+                    size: 5
+                };
+            }
             
             return true;
         }
@@ -150,8 +210,47 @@ function checkFoodCollision(snake) {
     return false;
 }
 
+function dropSpecialFood(snake) {
+    // 죽은 뱀이 특별한 먹이를 떨어뜨림
+    const dropCount = Math.min(snake.segments.length, 10); // 최대 10개
+    for (let i = 0; i < dropCount; i++) {
+        const segment = snake.segments[Math.floor(i * snake.segments.length / dropCount)];
+        gameState.food.push({
+            id: Date.now() + i,
+            x: segment.x + (Math.random() - 0.5) * 20,
+            y: segment.y + (Math.random() - 0.5) * 20,
+            color: '#FFD700', // 황금색 특별 먹이
+            size: 8,
+            value: 30 // 3배 점수
+        });
+    }
+}
+
+function resetSnake(snake) {
+    // 뱀을 기본 크기로 리셋
+    const position = generateRandomPosition();
+    const initialDirection = Math.random() * Math.PI * 2;
+    
+    snake.segments = [];
+    for (let i = 0; i < 3; i++) {
+        snake.segments.push({
+            x: position.x - Math.cos(initialDirection) * i * 12,
+            y: position.y - Math.sin(initialDirection) * i * 12
+        });
+    }
+    
+    snake.direction = initialDirection;
+    snake.score = 0;
+    snake.foodEaten = 0;
+    snake.displayScore = 0;
+    snake.alive = true;
+    snake.isBoosting = false;
+    snake.boostEnergy = 100;
+}
+
 function checkSnakeCollisions() {
     const players = Array.from(gameState.players.values());
+    const collisions = [];
     
     for (let i = 0; i < players.length; i++) {
         const snake1 = players[i];
@@ -163,22 +262,64 @@ function checkSnakeCollisions() {
             const snake2 = players[j];
             if (!snake2.alive) continue;
             
-            // 자기 자신과의 충돌 검사시 첫 번째 세그먼트는 건너뛰고,
-            // 자기 충돌은 더 가까워야 충돌로 판정 (뱀의 속도가 3이므로)
+            // 자기 자신과의 충돌 검사시 첫 번째 세그먼트는 건너뛰고
             const startIndex = i === j ? 1 : 0;
-            const minDistance = i === j ? 2.5 : 10; // 자기 충돌은 2.5, 다른 뱀과는 10
+            const minDistance = i === j ? 2.5 : 10;
             
             for (let k = startIndex; k < snake2.segments.length; k++) {
                 const segment = snake2.segments[k];
                 const distance = Math.sqrt(Math.pow(head1.x - segment.x, 2) + Math.pow(head1.y - segment.y, 2));
                 
                 if (distance < minDistance) {
-                    snake1.alive = false;
-                    return;
+                    if (i === j) {
+                        // 자기 자신과 충돌 - 즉시 죽음
+                        snake1.alive = false;
+                        dropSpecialFood(snake1);
+                    } else {
+                        // 다른 뱀과 충돌
+                        collisions.push({ snake1: i, snake2: j });
+                    }
+                    break;
                 }
             }
         }
     }
+    
+    // 충돌 처리
+    const processedPairs = new Set();
+    collisions.forEach(({ snake1: i, snake2: j }) => {
+        const pairKey = `${Math.min(i, j)}-${Math.max(i, j)}`;
+        if (processedPairs.has(pairKey)) return;
+        processedPairs.add(pairKey);
+        
+        const snake1 = players[i];
+        const snake2 = players[j];
+        
+        if (!snake1.alive || !snake2.alive) return;
+        
+        const size1 = snake1.segments.length;
+        const size2 = snake2.segments.length;
+        
+        if (Math.abs(size1 - size2) <= 2) {
+            // 비슷한 크기 - 둘 다 리셋
+            dropSpecialFood(snake1);
+            dropSpecialFood(snake2);
+            resetSnake(snake1);
+            resetSnake(snake2);
+        } else if (size1 > size2) {
+            // snake1이 더 큼
+            dropSpecialFood(snake2);
+            const reduction = Math.min(size2, snake1.segments.length - 3);
+            snake1.segments.splice(-reduction); // 꼬리 부분 제거
+            resetSnake(snake2);
+        } else {
+            // snake2가 더 큼
+            dropSpecialFood(snake1);
+            const reduction = Math.min(size1, snake2.segments.length - 3);
+            snake2.segments.splice(-reduction); // 꼬리 부분 제거
+            resetSnake(snake1);
+        }
+    });
 }
 
 let frameCount = 0;
@@ -280,6 +421,13 @@ io.on('connection', (socket) => {
         const player = gameState.players.get(socket.id);
         if (player && player.alive && typeof direction === 'number') {
             player.direction = direction;
+        }
+    });
+    
+    socket.on('boost', (isBoostActive) => {
+        const player = gameState.players.get(socket.id);
+        if (player && player.alive) {
+            player.isBoosting = isBoostActive;
         }
     });
     
