@@ -198,15 +198,40 @@ const gameLoopInterval = setInterval(() => {
         }
         
         // 모든 플레이어 업데이트
+        let updateCount = 0;
+        
+        // 강제로 첫 번째 플레이어 움직이기 테스트
+        if (gameState.players.size > 0 && frameCount % 60 === 0) {
+            const firstSnake = Array.from(gameState.players.values())[0];
+            console.log(`[FORCE TEST] Moving snake head from ${firstSnake.segments[0].x}`);
+            firstSnake.segments[0].x += 10;
+            console.log(`[FORCE TEST] Snake head now at ${firstSnake.segments[0].x}`);
+        }
+        
         gameState.players.forEach(snake => {
             if (snake.alive) {
-                if (frameCount <= 10) {
-                    console.log(`[GAME LOOP] Calling updateSnakePosition for snake ${snake.id}`);
+                updateCount++;
+                if (frameCount % 60 === 0) {
+                    const oldX = snake.segments[0].x;
+                    const oldY = snake.segments[0].y;
+                    console.log(`[BEFORE UPDATE] Snake at (${oldX.toFixed(1)},${oldY.toFixed(1)})`);
                 }
+                
                 updateSnakePosition(snake);
+                
+                if (frameCount % 60 === 0) {
+                    const newX = snake.segments[0].x;
+                    const newY = snake.segments[0].y;
+                    console.log(`[AFTER UPDATE] Snake at (${newX.toFixed(1)},${newY.toFixed(1)})`);
+                }
+                
                 checkFoodCollision(snake);
             }
         });
+        
+        if (frameCount % 60 === 0 && updateCount > 0) {
+            console.log(`[GAME LOOP] Updated ${updateCount} snakes at frame ${frameCount}`);
+        }
         
         // 충돌 검사
         if (gameState.players.size > 0) {
