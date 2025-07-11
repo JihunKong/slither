@@ -143,36 +143,62 @@ function checkSnakeCollisions() {
 
 let frameCount = 0;
 
+// 게임 루프 실행 확인
+console.log('Starting game loop...');
+
 // 간단한 게임 루프
-setInterval(() => {
-    // 모든 플레이어 업데이트
-    gameState.players.forEach(snake => {
-        if (snake.alive) {
-            updateSnakePosition(snake);
-            checkFoodCollision(snake);
+const gameLoopInterval = setInterval(() => {
+    try {
+        // 모든 플레이어 업데이트
+        gameState.players.forEach(snake => {
+            if (snake.alive) {
+                // 이전 위치 저장 (디버깅용)
+                const oldX = snake.segments[0].x;
+                const oldY = snake.segments[0].y;
+                
+                updateSnakePosition(snake);
+                
+                // 위치 변화 확인
+                if (frameCount % 60 === 0) {
+                    const deltaX = snake.segments[0].x - oldX;
+                    const deltaY = snake.segments[0].y - oldY;
+                    if (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
+                        console.log(`Snake ${snake.id} moved: deltaX=${deltaX.toFixed(2)}, deltaY=${deltaY.toFixed(2)}`);
+                    }
+                }
+                
+                checkFoodCollision(snake);
+            }
+        });
+        
+        // 충돌 검사
+        if (gameState.players.size > 0) {
+            checkSnakeCollisions();
         }
-    });
-    
-    // 충돌 검사
-    if (gameState.players.size > 0) {
-        checkSnakeCollisions();
-    }
-    
-    // 게임 상태 전송
-    const gameData = {
-        players: Array.from(gameState.players.values()),
-        food: gameState.food
-    };
-    
-    io.emit('gameUpdate', gameData);
-    
-    // 디버깅 로그 (1초마다)
-    frameCount++;
-    if (frameCount % 60 === 0 && gameState.players.size > 0) {
-        const firstPlayer = Array.from(gameState.players.values())[0];
-        console.log(`Frame ${frameCount}: Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), direction: ${firstPlayer.direction.toFixed(2)}, speed: ${firstPlayer.speed}`);
+        
+        // 게임 상태 전송
+        const gameData = {
+            players: Array.from(gameState.players.values()),
+            food: gameState.food
+        };
+        
+        io.emit('gameUpdate', gameData);
+        
+        // 디버깅 로그 (1초마다)
+        frameCount++;
+        if (frameCount % 60 === 0) {
+            console.log(`Frame ${frameCount}: ${gameState.players.size} players, ${io.engine.clientsCount} clients connected`);
+            if (gameState.players.size > 0) {
+                const firstPlayer = Array.from(gameState.players.values())[0];
+                console.log(`  Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), dir=${firstPlayer.direction.toFixed(2)}, speed=${firstPlayer.speed}`);
+            }
+        }
+    } catch (error) {
+        console.error('Game loop error:', error);
     }
 }, 1000 / 60); // 60 FPS
+
+console.log('Game loop started successfully');
 
 // 즉시 첫 번째 게임 업데이트 전송
 setTimeout(() => {

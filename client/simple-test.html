@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Movement Test</title>
+    <style>
+        body { margin: 0; padding: 20px; background: #000; color: #fff; font-family: monospace; }
+        canvas { border: 1px solid #fff; display: block; margin: 20px 0; }
+        #info { margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>Simple Snake Movement Test</h1>
+    <div id="info">Loading...</div>
+    <canvas id="canvas" width="800" height="600"></canvas>
+    <button onclick="testMovement()">Test Movement</button>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const info = document.getElementById('info');
+        
+        let socket;
+        let playerId;
+        let players = [];
+        let updateCount = 0;
+        
+        // Connect to server
+        socket = io();
+        
+        socket.on('connect', () => {
+            info.innerHTML += '<br>✓ Connected: ' + socket.id;
+        });
+        
+        socket.on('init', (data) => {
+            playerId = data.playerId;
+            info.innerHTML += '<br>✓ Initialized: ' + playerId;
+        });
+        
+        socket.on('gameUpdate', (data) => {
+            updateCount++;
+            players = data.players;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, 800, 600);
+            
+            // Draw all players
+            players.forEach(player => {
+                ctx.fillStyle = player.color;
+                player.segments.forEach(segment => {
+                    ctx.fillRect(segment.x - 5, segment.y - 5, 10, 10);
+                });
+            });
+            
+            // Update info every 60 frames
+            if (updateCount % 60 === 0) {
+                const myPlayer = players.find(p => p.id === playerId);
+                if (myPlayer) {
+                    info.innerHTML = `Updates: ${updateCount}<br>`;
+                    info.innerHTML += `Position: ${myPlayer.segments[0].x.toFixed(1)}, ${myPlayer.segments[0].y.toFixed(1)}<br>`;
+                    info.innerHTML += `Direction: ${myPlayer.direction.toFixed(2)}<br>`;
+                    info.innerHTML += `Alive: ${myPlayer.alive}`;
+                }
+            }
+        });
+        
+        // Test movement
+        function testMovement() {
+            const angle = Math.random() * Math.PI * 2;
+            socket.emit('updateDirection', angle);
+            info.innerHTML += `<br>Sent direction: ${angle.toFixed(2)}`;
+        }
+        
+        // Auto test - change direction every 2 seconds
+        setInterval(() => {
+            if (socket.connected) {
+                testMovement();
+            }
+        }, 2000);
+    </script>
+</body>
+</html>
