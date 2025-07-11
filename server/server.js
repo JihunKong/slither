@@ -24,8 +24,7 @@ app.use(express.static(path.join(__dirname, '../client')));
 
 const gameState = {
     players: new Map(),
-    food: [],
-    lastUpdateTime: Date.now()
+    food: []
 };
 
 function generateRandomPosition() {
@@ -142,31 +141,24 @@ function checkSnakeCollisions() {
     }
 }
 
-let loopCount = 0;
+let frameCount = 0;
 
-function gameLoop() {
-    const currentTime = Date.now();
-    const deltaTime = currentTime - gameState.lastUpdateTime;
-    
-    if (deltaTime < 16) return;
-    
-    // 플레이어가 있을 때만 업데이트
-    if (gameState.players.size > 0) {
-        gameState.players.forEach(snake => {
+// 간단한 게임 루프
+setInterval(() => {
+    // 모든 플레이어 업데이트
+    gameState.players.forEach(snake => {
+        if (snake.alive) {
             updateSnakePosition(snake);
             checkFoodCollision(snake);
-        });
-        
-        checkSnakeCollisions();
-        
-        // 매 60프레임마다 한 번씩 상태 로그
-        if (loopCount % 60 === 0 && gameState.players.size > 0) {
-            const firstPlayer = Array.from(gameState.players.values())[0];
-            console.log(`Game loop #${loopCount}: Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), direction: ${firstPlayer.direction.toFixed(2)}`);
         }
-        loopCount++;
+    });
+    
+    // 충돌 검사
+    if (gameState.players.size > 0) {
+        checkSnakeCollisions();
     }
     
+    // 게임 상태 전송
     const gameData = {
         players: Array.from(gameState.players.values()),
         food: gameState.food
@@ -174,8 +166,13 @@ function gameLoop() {
     
     io.emit('gameUpdate', gameData);
     
-    gameState.lastUpdateTime = currentTime;
-}
+    // 디버깅 로그 (1초마다)
+    frameCount++;
+    if (frameCount % 60 === 0 && gameState.players.size > 0) {
+        const firstPlayer = Array.from(gameState.players.values())[0];
+        console.log(`Frame ${frameCount}: Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), direction: ${firstPlayer.direction.toFixed(2)}, speed: ${firstPlayer.speed}`);
+    }
+}, 1000 / 60); // 60 FPS
 
 // 즉시 첫 번째 게임 업데이트 전송
 setTimeout(() => {
@@ -187,9 +184,7 @@ setTimeout(() => {
 }, 100);
 
 initializeFood();
-
-// 게임 루프 시작
-const gameLoopInterval = setInterval(gameLoop, 16);
+console.log('Server initialized, game loop running at 60 FPS');
 
 io.on('connection', (socket) => {
     console.log('New player connected:', socket.id);
