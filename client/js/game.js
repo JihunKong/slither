@@ -20,9 +20,25 @@ canvas.width = 800;
 canvas.height = 600;
 
 function connectToServer() {
-    socket = io();
+    console.log('Attempting to connect to server...');
+    
+    socket = io({
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000
+    });
+    
+    socket.on('connect', () => {
+        console.log('Connected to server with ID:', socket.id);
+    });
+    
+    socket.on('connect_error', (error) => {
+        console.error('Connection error:', error);
+    });
     
     socket.on('init', (data) => {
+        console.log('Initialized with data:', data);
         playerId = data.playerId;
         gameWidth = data.gameWidth;
         gameHeight = data.gameHeight;
@@ -36,6 +52,10 @@ function connectToServer() {
     
     socket.on('gameFull', () => {
         gameFullMessage.style.display = 'block';
+    });
+    
+    socket.on('disconnect', (reason) => {
+        console.log('Disconnected from server:', reason);
     });
 }
 
@@ -197,18 +217,14 @@ canvas.addEventListener('mousemove', handleMouseMove);
 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
 
 respawnBtn.addEventListener('click', () => {
-    socket.emit('respawn');
-    respawnBtn.style.display = 'none';
+    if (socket && socket.connected) {
+        socket.emit('respawn');
+        respawnBtn.style.display = 'none';
+    }
 });
 
-// 디버깅을 위한 연결 상태 확인
-socket.on('connect', () => {
-    console.log('Connected to server');
+// 페이지 로드 완료 후 연결 시작
+window.addEventListener('load', () => {
+    connectToServer();
+    draw();
 });
-
-socket.on('disconnect', () => {
-    console.log('Disconnected from server');
-});
-
-connectToServer();
-draw();
