@@ -44,6 +44,8 @@ function connectToServer() {
         gameHeight = data.gameHeight;
     });
     
+    let updateCount = 0;
+    let lastPosition = null;
     socket.on('gameUpdate', (data) => {
         gameData = data;
         myPlayer = gameData.players.find(p => p.id === playerId);
@@ -52,6 +54,23 @@ function connectToServer() {
             console.log('Available players:', data.players.map(p => p.id));
         }
         updateUI();
+        
+        // 디버깅: 업데이트 횟수와 위치 변화 확인
+        updateCount++;
+        if (myPlayer && myPlayer.segments.length > 0) {
+            const currentPos = myPlayer.segments[0];
+            if (updateCount % 60 === 0) {
+                console.log(`Update #${updateCount}: Player at (${currentPos.x.toFixed(1)}, ${currentPos.y.toFixed(1)})`);
+                if (lastPosition) {
+                    const distance = Math.sqrt(
+                        Math.pow(currentPos.x - lastPosition.x, 2) + 
+                        Math.pow(currentPos.y - lastPosition.y, 2)
+                    );
+                    console.log(`  Moved ${distance.toFixed(1)} units since last check`);
+                }
+                lastPosition = { x: currentPos.x, y: currentPos.y };
+            }
+        }
     });
     
     socket.on('gameFull', () => {
