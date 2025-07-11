@@ -184,6 +184,14 @@ function draw() {
         drawSnake(player);
     });
     
+    // 디버그 정보 표시
+    if (!myPlayer) {
+        ctx.fillStyle = 'white';
+        ctx.font = '20px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('연결 중...', canvas.width / 2, canvas.height / 2);
+    }
+    
     requestAnimationFrame(draw);
 }
 

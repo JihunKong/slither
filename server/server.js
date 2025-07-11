@@ -144,12 +144,15 @@ function gameLoop() {
     
     if (deltaTime < 16) return;
     
-    gameState.players.forEach(snake => {
-        updateSnakePosition(snake);
-        checkFoodCollision(snake);
-    });
-    
-    checkSnakeCollisions();
+    // 플레이어가 있을 때만 업데이트
+    if (gameState.players.size > 0) {
+        gameState.players.forEach(snake => {
+            updateSnakePosition(snake);
+            checkFoodCollision(snake);
+        });
+        
+        checkSnakeCollisions();
+    }
     
     const gameData = {
         players: Array.from(gameState.players.values()),
@@ -171,7 +174,9 @@ setTimeout(() => {
 }, 100);
 
 initializeFood();
-setInterval(gameLoop, 16);
+
+// 게임 루프 시작
+const gameLoopInterval = setInterval(gameLoop, 16);
 
 io.on('connection', (socket) => {
     console.log('New player connected:', socket.id);
@@ -221,4 +226,8 @@ io.on('connection', (socket) => {
 
 server.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
+    console.log('Game initialized with:');
+    console.log(`- Game size: ${GAME_WIDTH}x${GAME_HEIGHT}`);
+    console.log(`- Max players: ${MAX_PLAYERS}`);
+    console.log(`- Food count: ${FOOD_COUNT}`);
 });
