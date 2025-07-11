@@ -47,8 +47,9 @@ function connectToServer() {
     socket.on('gameUpdate', (data) => {
         gameData = data;
         myPlayer = gameData.players.find(p => p.id === playerId);
-        if (!myPlayer) {
-            console.log('Player not found in game data');
+        if (!myPlayer && playerId) {
+            console.log('Player not found in game data. PlayerId:', playerId);
+            console.log('Available players:', data.players.map(p => p.id));
         }
         updateUI();
     });

@@ -74,9 +74,13 @@ function updateSnakePosition(snake) {
     if (!snake.alive) return;
 
     const head = { ...snake.segments[0] };
-    head.x += Math.cos(snake.direction) * snake.speed;
-    head.y += Math.sin(snake.direction) * snake.speed;
+    const moveX = Math.cos(snake.direction) * snake.speed;
+    const moveY = Math.sin(snake.direction) * snake.speed;
+    
+    head.x += moveX;
+    head.y += moveY;
 
+    // 경계 처리
     if (head.x < 0) head.x = GAME_WIDTH;
     if (head.x > GAME_WIDTH) head.x = 0;
     if (head.y < 0) head.y = GAME_HEIGHT;

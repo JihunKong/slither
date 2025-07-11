@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Snake Game Debug</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+        }
+        #debug {
+            white-space: pre;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Game Debug Info</h1>
+    <div id="debug"></div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const debugDiv = document.getElementById('debug');
+        let debugInfo = {};
+        
+        function updateDebug() {
+            debugDiv.textContent = JSON.stringify(debugInfo, null, 2);
+        }
+        
+        const socket = io();
+        
+        socket.on('connect', () => {
+            debugInfo.connected = true;
+            debugInfo.socketId = socket.id;
+            debugInfo.connectTime = new Date().toISOString();
+            updateDebug();
+        });
+        
+        socket.on('init', (data) => {
+            debugInfo.initialized = true;
+            debugInfo.playerId = data.playerId;
+            debugInfo.gameSize = `${data.gameWidth}x${data.gameHeight}`;
+            updateDebug();
+        });
+        
+        socket.on('gameUpdate', (data) => {
+            debugInfo.lastUpdate = new Date().toISOString();
+            debugInfo.playerCount = data.players.length;
+            debugInfo.foodCount = data.food.length;
+            debugInfo.myPlayer = data.players.find(p => p.id === debugInfo.playerId);
+            updateDebug();
+        });
+        
+        socket.on('disconnect', () => {
+            debugInfo.connected = false;
+            debugInfo.disconnectTime = new Date().toISOString();
+            updateDebug();
+        });
+        
+        // 자동으로 방향 변경 테스트
+        setInterval(() => {
+            if (socket.connected) {
+                const angle = Math.random() * Math.PI * 2;
+                socket.emit('updateDirection', angle);
+                debugInfo.lastDirectionSent = angle;
+                updateDebug();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
