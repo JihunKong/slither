@@ -46,7 +46,11 @@ function connectToServer() {
         gameHeight = data.gameHeight;
         isHost = data.isHost;
         gameStarted = data.gameStarted;
-        updateStartButton();
+        console.log('Init - isHost:', isHost, 'gameStarted:', gameStarted);
+        // updateStartButton을 약간의 지연 후 호출하여 DOM이 준비되도록 함
+        setTimeout(() => {
+            updateStartButton();
+        }, 100);
     });
     
     socket.on('gameStarted', (data) => {
@@ -76,7 +80,9 @@ function connectToServer() {
         gameStarted = data.gameStarted;
         isHost = data.roomHost === playerId;
         updateUI();
-        updateStartButton();
+        setTimeout(() => {
+            updateStartButton();
+        }, 0);
         
         // 디버깅: 업데이트 횟수와 위치 변화 확인
         updateCount++;
@@ -508,3 +514,17 @@ window.addEventListener('load', () => {
     connectToServer();
     draw();
 });
+
+// 전역으로 디버깅 함수 추가
+window.debugStartGame = () => {
+    console.log('Debug info:');
+    console.log('- socket:', socket);
+    console.log('- socket.connected:', socket?.connected);
+    console.log('- isHost:', isHost);
+    console.log('- gameStarted:', gameStarted);
+    console.log('- playerId:', playerId);
+    if (socket && socket.connected) {
+        console.log('Manually emitting startGame');
+        socket.emit('startGame');
+    }
+};

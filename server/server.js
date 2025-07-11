@@ -438,6 +438,9 @@ setTimeout(() => {
 }, 100);
 
 initializeFood();
+// 서버 시작 시 게임 상태 초기화
+gameState.gameStarted = false;
+gameState.roomHost = null;
 console.log('Server initialized, game loop running at 60 FPS');
 
 io.on('connection', (socket) => {
