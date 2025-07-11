@@ -205,7 +205,6 @@ function handleMouseMove(e) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
-        console.log('Sending direction:', angle);
         socket.emit('updateDirection', angle);
     }
 }
