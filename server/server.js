@@ -10,7 +10,9 @@ const io = socketIo(server, {
         origin: "*",
         methods: ["GET", "POST"]
     },
-    transports: ['polling', 'websocket'] // polling을 우선으로
+    transports: ['websocket', 'polling'], // websocket을 우선으로 변경
+    pingInterval: 10000,
+    pingTimeout: 5000
 });
 
 const PORT = process.env.PORT || 3000;
@@ -57,12 +59,12 @@ function createSnake(playerId) {
     // 초기 방향을 랜덤하게 설정하여 움직임 확인
     const initialDirection = Math.random() * Math.PI * 2;
     
-    // 초기 세그먼트를 방향의 반대로 배치
+    // 초기 세그먼트를 방향의 반대로 배치 (충돌 방지를 위해 12 단위로 간격 설정)
     const segments = [];
     for (let i = 0; i < 3; i++) {
         segments.push({
-            x: position.x - Math.cos(initialDirection) * i * 10,
-            y: position.y - Math.sin(initialDirection) * i * 10
+            x: position.x - Math.cos(initialDirection) * i * 12,
+            y: position.y - Math.sin(initialDirection) * i * 12
         });
     }
     
@@ -80,13 +82,6 @@ function createSnake(playerId) {
 
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
-    
-    // 디버그: 처음 몇 프레임 동안 확인
-    if (frameCount <= 300) {
-        if (frameCount % 20 === 0) {
-            console.log(`[DEBUG] updateSnakePosition called for snake ${snake.id} at frame ${frameCount}`);
-        }
-    }
 
     // 이전 위치들을 저장
     const previousPositions = snake.segments.map(segment => ({
@@ -102,13 +97,14 @@ function updateSnakePosition(snake) {
     const moveX = Math.cos(snake.direction) * snake.speed;
     const moveY = Math.sin(snake.direction) * snake.speed;
     
+    
     head.x += moveX;
     head.y += moveY;
     
-    // 디버그: 실제 이동 확인
-    if (frameCount <= 300 && frameCount % 20 === 0) {
-        console.log(`[DEBUG] Head moved from (${oldX.toFixed(1)},${oldY.toFixed(1)}) to (${head.x.toFixed(1)},${head.y.toFixed(1)})`);
-        console.log(`[DEBUG] Direction: ${snake.direction}, moveX: ${moveX}, moveY: ${moveY}`);
+    // 디버그: 이동 후 위치
+    if (frameCount <= 130) {
+        console.log(`  After: (${head.x.toFixed(1)},${head.y.toFixed(1)})`);
+        console.log(`  Move was: (${moveX.toFixed(2)},${moveY.toFixed(2)})`);
     }
 
     // 경계 처리
@@ -167,13 +163,16 @@ function checkSnakeCollisions() {
             const snake2 = players[j];
             if (!snake2.alive) continue;
             
+            // 자기 자신과의 충돌 검사시 첫 번째 세그먼트는 건너뛰고,
+            // 자기 충돌은 더 가까워야 충돌로 판정 (뱀의 속도가 3이므로)
             const startIndex = i === j ? 1 : 0;
+            const minDistance = i === j ? 2.5 : 10; // 자기 충돌은 2.5, 다른 뱀과는 10
             
             for (let k = startIndex; k < snake2.segments.length; k++) {
                 const segment = snake2.segments[k];
                 const distance = Math.sqrt(Math.pow(head1.x - segment.x, 2) + Math.pow(head1.y - segment.y, 2));
                 
-                if (distance < 10) {
+                if (distance < minDistance) {
                     snake1.alive = false;
                     return;
                 }
@@ -183,6 +182,8 @@ function checkSnakeCollisions() {
 }
 
 let frameCount = 0;
+let lastBroadcast = 0;
+let lastUpdateFrame = -1;
 
 // 게임 루프 실행 확인
 console.log('Starting game loop...');
@@ -192,59 +193,35 @@ const gameLoopInterval = setInterval(() => {
     frameCount++;
     
     try {
-        // 첫 10프레임 동안 디버깅
-        if (frameCount <= 10 && gameState.players.size > 0) {
-            console.log(`[GAME LOOP] Frame ${frameCount}: Updating ${gameState.players.size} players`);
-        }
-        
         // 모든 플레이어 업데이트
-        let updateCount = 0;
-        
-        // 강제로 첫 번째 플레이어 움직이기 테스트
-        if (gameState.players.size > 0 && frameCount % 60 === 0) {
-            const firstSnake = Array.from(gameState.players.values())[0];
-            console.log(`[FORCE TEST] Moving snake head from ${firstSnake.segments[0].x}`);
-            firstSnake.segments[0].x += 10;
-            console.log(`[FORCE TEST] Snake head now at ${firstSnake.segments[0].x}`);
-        }
-        
         gameState.players.forEach(snake => {
             if (snake.alive) {
-                updateCount++;
-                if (frameCount % 60 === 0) {
-                    const oldX = snake.segments[0].x;
-                    const oldY = snake.segments[0].y;
-                    console.log(`[BEFORE UPDATE] Snake at (${oldX.toFixed(1)},${oldY.toFixed(1)})`);
-                }
-                
                 updateSnakePosition(snake);
-                
-                if (frameCount % 60 === 0) {
-                    const newX = snake.segments[0].x;
-                    const newY = snake.segments[0].y;
-                    console.log(`[AFTER UPDATE] Snake at (${newX.toFixed(1)},${newY.toFixed(1)})`);
-                }
-                
                 checkFoodCollision(snake);
             }
         });
         
-        if (frameCount % 60 === 0 && updateCount > 0) {
-            console.log(`[GAME LOOP] Updated ${updateCount} snakes at frame ${frameCount}`);
-        }
         
         // 충돌 검사
         if (gameState.players.size > 0) {
             checkSnakeCollisions();
         }
         
-        // 게임 상태 전송
-        const gameData = {
-            players: Array.from(gameState.players.values()),
-            food: gameState.food
-        };
-        
-        io.emit('gameUpdate', gameData);
+        // 게임 상태 전송 (초당 20번으로 제한)
+        if (frameCount - lastBroadcast >= 3) { // 60fps / 3 = 20 updates per second
+            const gameData = {
+                players: Array.from(gameState.players.values()),
+                food: gameState.food
+            };
+            
+            // 디버깅: emit 전에 확인
+            if (frameCount % 60 === 0 && io.engine.clientsCount > 0) {
+                console.log(`[EMIT] Sending gameUpdate to ${io.engine.clientsCount} clients`);
+            }
+            
+            io.emit('gameUpdate', gameData);
+            lastBroadcast = frameCount;
+        }
         
         // 디버깅 로그 (1초마다)
         if (frameCount % 60 === 0) {
@@ -252,6 +229,7 @@ const gameLoopInterval = setInterval(() => {
             if (gameState.players.size > 0) {
                 const firstPlayer = Array.from(gameState.players.values())[0];
                 console.log(`  Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), dir=${firstPlayer.direction.toFixed(2)}, speed=${firstPlayer.speed}`);
+                console.log(`  Debug ID: ${firstPlayer._debug_id}`);
                 // 처음 3개 세그먼트 위치 확인
                 if (frameCount % 300 === 0) {
                     console.log(`  Segments: ${firstPlayer.segments.slice(0, 3).map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
@@ -259,7 +237,10 @@ const gameLoopInterval = setInterval(() => {
             }
         }
     } catch (error) {
-        console.error('Game loop error:', error);
+        console.error('!!! GAME LOOP ERROR !!!');
+        console.error('Error:', error.message);
+        console.error('Stack trace:', error.stack);
+        console.error('Frame:', frameCount);
     }
 }, 1000 / 60); // 60 FPS
 
