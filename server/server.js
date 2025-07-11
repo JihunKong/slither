@@ -22,12 +22,17 @@ const GAME_HEIGHT = 1800;
 const MAX_PLAYERS = 20;
 const SNAKE_SPEED = 3.5; // 기본 속도 증가
 const FOOD_COUNT = 150; // 맵 확장에 맞춰 먹이 증가
+const ROOM_WAIT_TIME = 5000; // 5초 대기 후 게임 시작
 
 app.use(express.static(path.join(__dirname, '../client')));
 
 const gameState = {
     players: new Map(),
-    food: []
+    food: [],
+    roomHost: null,
+    gameStarted: false,
+    readyPlayers: new Set(),
+    gameStartTime: null
 };
 
 function generateRandomPosition() {
@@ -44,12 +49,33 @@ function generateRandomColor() {
 
 function initializeFood() {
     gameState.food = [];
+    const foodTypes = [
+        { value: 5, size: 4, weight: 50, colors: ['#FF6B6B', '#4ECDC4', '#45B7D1'] }, // 작은 먹이 (50%)
+        { value: 10, size: 5, weight: 30, colors: ['#F7DC6F', '#B8E994', '#FD79A8'] }, // 중간 먹이 (30%)
+        { value: 20, size: 6, weight: 15, colors: ['#A29BFE', '#FFEAA7', '#74B9FF'] }, // 큰 먹이 (15%)
+        { value: 50, size: 8, weight: 5, colors: ['#FFD700', '#FFA500', '#FF69B4'] }   // 특별 먹이 (5%)
+    ];
+    
+    let id = 0;
     for (let i = 0; i < FOOD_COUNT; i++) {
+        const rand = Math.random() * 100;
+        let cumulativeWeight = 0;
+        let selectedType = foodTypes[0];
+        
+        for (const type of foodTypes) {
+            cumulativeWeight += type.weight;
+            if (rand <= cumulativeWeight) {
+                selectedType = type;
+                break;
+            }
+        }
+        
         gameState.food.push({
-            id: i,
+            id: id++,
             ...generateRandomPosition(),
-            color: generateRandomColor(),
-            size: 5
+            color: selectedType.colors[Math.floor(Math.random() * selectedType.colors.length)],
+            size: selectedType.size,
+            value: selectedType.value
         });
     }
 }
@@ -146,11 +172,15 @@ function updateSnakePosition(snake) {
         console.log(`  Move was: (${moveX.toFixed(2)},${moveY.toFixed(2)})`);
     }
 
-    // 경계 처리
-    if (head.x < 0) head.x = GAME_WIDTH;
-    if (head.x > GAME_WIDTH) head.x = 0;
-    if (head.y < 0) head.y = GAME_HEIGHT;
-    if (head.y > GAME_HEIGHT) head.y = 0;
+    // 경계 처리 - 반사
+    if (head.x < 0 || head.x > GAME_WIDTH) {
+        snake.direction = Math.PI - snake.direction; // 수평 반사
+        head.x = Math.max(0, Math.min(GAME_WIDTH, head.x));
+    }
+    if (head.y < 0 || head.y > GAME_HEIGHT) {
+        snake.direction = -snake.direction; // 수직 반사
+        head.y = Math.max(0, Math.min(GAME_HEIGHT, head.y));
+    }
 
     // 나머지 세그먼트들이 앞 세그먼트의 이전 위치로 이동
     for (let i = 1; i < snake.segments.length; i++) {
@@ -195,12 +225,19 @@ function checkFoodCollision(snake) {
                 // 특별 먹이는 제거
                 gameState.food.splice(i, 1);
             } else {
-                // 일반 먹이는 재생성
+                // 일반 먹이는 같은 타입으로 재생성
+                const foodTypes = [
+                    { value: 5, size: 4, colors: ['#FF6B6B', '#4ECDC4', '#45B7D1'] },
+                    { value: 10, size: 5, colors: ['#F7DC6F', '#B8E994', '#FD79A8'] },
+                    { value: 20, size: 6, colors: ['#A29BFE', '#FFEAA7', '#74B9FF'] }
+                ];
+                const type = foodTypes.find(t => t.value === food.value) || foodTypes[0];
                 gameState.food[i] = {
                     id: food.id,
                     ...generateRandomPosition(),
-                    color: generateRandomColor(),
-                    size: 5
+                    color: type.colors[Math.floor(Math.random() * type.colors.length)],
+                    size: type.size,
+                    value: type.value
                 };
             }
             
@@ -262,9 +299,9 @@ function checkSnakeCollisions() {
             const snake2 = players[j];
             if (!snake2.alive) continue;
             
-            // 자기 자신과의 충돌 검사시 첫 번째 세그먼트는 건너뛰고
-            const startIndex = i === j ? 1 : 0;
-            const minDistance = i === j ? 2.5 : 10;
+            // 자기 자신과의 충돌 검사시 더 많은 세그먼트 건너뛰기 (급격한 회전 고려)
+            const startIndex = i === j ? 4 : 0; // 처음 4개 세그먼트는 건너뛰기
+            const minDistance = i === j ? 5 : 10; // 자기 충돌 거리를 더 크게
             
             for (let k = startIndex; k < snake2.segments.length; k++) {
                 const segment = snake2.segments[k];
@@ -334,25 +371,29 @@ const gameLoopInterval = setInterval(() => {
     frameCount++;
     
     try {
-        // 모든 플레이어 업데이트
-        gameState.players.forEach(snake => {
-            if (snake.alive) {
-                updateSnakePosition(snake);
-                checkFoodCollision(snake);
+        // 게임이 시작된 경우에만 업데이트
+        if (gameState.gameStarted) {
+            // 모든 플레이어 업데이트
+            gameState.players.forEach(snake => {
+                if (snake.alive) {
+                    updateSnakePosition(snake);
+                    checkFoodCollision(snake);
+                }
+            });
+            
+            // 충돌 검사
+            if (gameState.players.size > 0) {
+                checkSnakeCollisions();
             }
-        });
-        
-        
-        // 충돌 검사
-        if (gameState.players.size > 0) {
-            checkSnakeCollisions();
         }
         
         // 게임 상태 전송 (초당 20번으로 제한)
         if (frameCount - lastBroadcast >= 3) { // 60fps / 3 = 20 updates per second
             const gameData = {
                 players: Array.from(gameState.players.values()),
-                food: gameState.food
+                food: gameState.food,
+                gameStarted: gameState.gameStarted,
+                roomHost: gameState.roomHost
             };
             
             // 디버깅: emit 전에 확인
@@ -411,16 +452,41 @@ io.on('connection', (socket) => {
     const snake = createSnake(socket.id);
     gameState.players.set(socket.id, snake);
     
+    // 첫 번째 플레이어가 방장
+    if (!gameState.roomHost) {
+        gameState.roomHost = socket.id;
+        console.log('Room host set to:', socket.id);
+    }
+    
     socket.emit('init', {
         playerId: socket.id,
         gameWidth: GAME_WIDTH,
-        gameHeight: GAME_HEIGHT
+        gameHeight: GAME_HEIGHT,
+        isHost: gameState.roomHost === socket.id,
+        gameStarted: gameState.gameStarted
     });
     
     socket.on('updateDirection', (direction) => {
         const player = gameState.players.get(socket.id);
-        if (player && player.alive && typeof direction === 'number') {
+        if (player && player.alive && typeof direction === 'number' && gameState.gameStarted) {
             player.direction = direction;
+        }
+    });
+    
+    // 방장의 게임 시작 요청
+    socket.on('startGame', () => {
+        if (socket.id === gameState.roomHost && !gameState.gameStarted) {
+            if (gameState.players.size >= 2) {
+                gameState.gameStarted = true;
+                gameState.gameStartTime = Date.now();
+                console.log('Game started by host');
+                io.emit('gameStarted', {
+                    startTime: gameState.gameStartTime,
+                    playerCount: gameState.players.size
+                });
+            } else {
+                socket.emit('needMorePlayers');
+            }
         }
     });
     
@@ -449,6 +515,21 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);
         gameState.players.delete(socket.id);
+        
+        // 방장이 나갔으면 새로운 방장 지정
+        if (socket.id === gameState.roomHost && gameState.players.size > 0) {
+            gameState.roomHost = gameState.players.keys().next().value;
+            console.log('New room host:', gameState.roomHost);
+            io.emit('newHost', { hostId: gameState.roomHost });
+        }
+        
+        // 모든 플레이어가 나갔으면 게임 리셋
+        if (gameState.players.size === 0) {
+            gameState.gameStarted = false;
+            gameState.roomHost = null;
+            gameState.readyPlayers.clear();
+            console.log('Game reset - no players');
+        }
     });
 });
 

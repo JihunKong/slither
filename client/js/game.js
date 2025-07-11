@@ -15,6 +15,8 @@ let mouseX = 0;
 let mouseY = 0;
 let gameData = { players: [], food: [] };
 let myPlayer = null;
+let isHost = false;
+let gameStarted = false;
 
 canvas.width = 800;
 canvas.height = 600;
@@ -42,6 +44,24 @@ function connectToServer() {
         playerId = data.playerId;
         gameWidth = data.gameWidth;
         gameHeight = data.gameHeight;
+        isHost = data.isHost;
+        gameStarted = data.gameStarted;
+        updateStartButton();
+    });
+    
+    socket.on('gameStarted', (data) => {
+        gameStarted = true;
+        console.log('Game started!', data);
+        updateStartButton();
+    });
+    
+    socket.on('newHost', (data) => {
+        isHost = data.hostId === playerId;
+        updateStartButton();
+    });
+    
+    socket.on('needMorePlayers', () => {
+        alert('최소 2명 이상의 플레이어가 필요합니다!');
     });
     
     let updateCount = 0;
@@ -53,7 +73,10 @@ function connectToServer() {
             console.log('Player not found in game data. PlayerId:', playerId);
             console.log('Available players:', data.players.map(p => p.id));
         }
+        gameStarted = data.gameStarted;
+        isHost = data.roomHost === playerId;
         updateUI();
+        updateStartButton();
         
         // 디버깅: 업데이트 횟수와 위치 변화 확인
         updateCount++;
@@ -160,7 +183,7 @@ function drawFood() {
             // 특별 먹이는 더 크고 빛나게
             if (food.value && food.value > 10) {
                 // 빛나는 효과
-                ctx.shadowBlur = 10;
+                ctx.shadowBlur = food.value >= 50 ? 15 : 10;
                 ctx.shadowColor = food.color;
                 ctx.fillStyle = food.color;
                 ctx.beginPath();
@@ -173,6 +196,14 @@ function drawFood() {
                 ctx.beginPath();
                 ctx.arc(x, y, (food.size || 8) * 0.6, 0, Math.PI * 2);
                 ctx.fill();
+                
+                // 점수 표시
+                if (food.value >= 20) {
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 10px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(food.value, x, y + 3);
+                }
             } else {
                 // 일반 먹이
                 ctx.beginPath();
@@ -328,8 +359,24 @@ function draw() {
     // 부스트 바 그리기
     drawBoostBar();
     
-    // 디버그 정보 표시
-    if (!myPlayer) {
+    // 게임 상태 표시
+    if (!gameStarted) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.fillStyle = 'white';
+        ctx.font = '30px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('게임 시작 대기 중', canvas.width / 2, canvas.height / 2 - 20);
+        
+        if (isHost) {
+            ctx.font = '20px Arial';
+            ctx.fillText('당신이 방장입니다. 시작 버튼을 눌러주세요!', canvas.width / 2, canvas.height / 2 + 20);
+        } else {
+            ctx.font = '20px Arial';
+            ctx.fillText('방장이 게임을 시작할 때까지 기다려주세요...', canvas.width / 2, canvas.height / 2 + 20);
+        }
+    } else if (!myPlayer) {
         ctx.fillStyle = 'white';
         ctx.font = '20px Arial';
         ctx.textAlign = 'center';
@@ -344,11 +391,44 @@ function handleMouseMove(e) {
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
     
-    if (myPlayer && myPlayer.alive && socket && socket.connected) {
+    if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
         socket.emit('updateDirection', angle);
+    }
+}
+
+function updateStartButton() {
+    const existingBtn = document.getElementById('startGameBtn');
+    if (existingBtn) {
+        existingBtn.remove();
+    }
+    
+    if (isHost && !gameStarted) {
+        const startBtn = document.createElement('button');
+        startBtn.id = 'startGameBtn';
+        startBtn.textContent = '게임 시작';
+        startBtn.style.cssText = `
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            font-size: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 100;
+        `;
+        startBtn.addEventListener('click', () => {
+            if (socket && socket.connected) {
+                socket.emit('startGame');
+            }
+        });
+        document.body.appendChild(startBtn);
     }
 }
 
@@ -360,7 +440,7 @@ function handleTouchMove(e) {
     mouseX = touch.clientX - rect.left;
     mouseY = touch.clientY - rect.top;
     
-    if (myPlayer && myPlayer.alive && socket && socket.connected) {
+    if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
@@ -375,7 +455,7 @@ function handleTouchStart(e) {
     mouseX = touch.clientX - rect.left;
     mouseY = touch.clientY - rect.top;
     
-    if (myPlayer && myPlayer.alive && socket && socket.connected) {
+    if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
