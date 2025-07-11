@@ -54,6 +54,9 @@ function initializeFood() {
 
 function createSnake(playerId) {
     const position = generateRandomPosition();
+    // 초기 방향을 랜덤하게 설정하여 움직임 확인
+    const initialDirection = Math.random() * Math.PI * 2;
+    
     return {
         id: playerId,
         segments: [
@@ -61,7 +64,7 @@ function createSnake(playerId) {
             { x: position.x - 10, y: position.y },
             { x: position.x - 20, y: position.y }
         ],
-        direction: 0, // 오른쪽으로 시작
+        direction: initialDirection,
         speed: SNAKE_SPEED,
         color: generateRandomColor(),
         name: `Player ${gameState.players.size + 1}`,
@@ -77,6 +80,12 @@ function updateSnakePosition(snake) {
     const moveX = Math.cos(snake.direction) * snake.speed;
     const moveY = Math.sin(snake.direction) * snake.speed;
     
+    // 디버깅: 처음 몇 프레임 동안 움직임 로그
+    if (frameCount < 5) {
+        console.log(`Update snake: dir=${snake.direction}, speed=${snake.speed}, moveX=${moveX}, moveY=${moveY}`);
+        console.log(`  Before: x=${head.x}, y=${head.y}`);
+    }
+    
     head.x += moveX;
     head.y += moveY;
 
@@ -85,6 +94,10 @@ function updateSnakePosition(snake) {
     if (head.x > GAME_WIDTH) head.x = 0;
     if (head.y < 0) head.y = GAME_HEIGHT;
     if (head.y > GAME_HEIGHT) head.y = 0;
+    
+    if (frameCount < 5) {
+        console.log(`  After: x=${head.x}, y=${head.y}`);
+    }
 
     snake.segments.unshift(head);
     snake.segments.pop();
@@ -159,13 +172,12 @@ const gameLoopInterval = setInterval(() => {
                 
                 updateSnakePosition(snake);
                 
-                // 위치 변화 확인
-                if (frameCount % 60 === 0) {
-                    const deltaX = snake.segments[0].x - oldX;
-                    const deltaY = snake.segments[0].y - oldY;
-                    if (Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) {
-                        console.log(`Snake ${snake.id} moved: deltaX=${deltaX.toFixed(2)}, deltaY=${deltaY.toFixed(2)}`);
-                    }
+                // 위치 변화 확인 - 매 프레임마다 체크
+                const deltaX = snake.segments[0].x - oldX;
+                const deltaY = snake.segments[0].y - oldY;
+                if ((Math.abs(deltaX) > 0.01 || Math.abs(deltaY) > 0.01) && frameCount % 60 === 0) {
+                    console.log(`Snake moved: deltaX=${deltaX.toFixed(2)}, deltaY=${deltaY.toFixed(2)}`);
+                    console.log(`  Segments: ${snake.segments.map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
                 }
                 
                 checkFoodCollision(snake);
