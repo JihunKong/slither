@@ -61,7 +61,7 @@ function createSnake(playerId) {
             { x: position.x - 10, y: position.y },
             { x: position.x - 20, y: position.y }
         ],
-        direction: 0,
+        direction: 0, // 오른쪽으로 시작
         speed: SNAKE_SPEED,
         color: generateRandomColor(),
         name: `Player ${gameState.players.size + 1}`,
@@ -161,6 +161,15 @@ function gameLoop() {
     gameState.lastUpdateTime = currentTime;
 }
 
+// 즉시 첫 번째 게임 업데이트 전송
+setTimeout(() => {
+    const gameData = {
+        players: Array.from(gameState.players.values()),
+        food: gameState.food
+    };
+    io.emit('gameUpdate', gameData);
+}, 100);
+
 initializeFood();
 setInterval(gameLoop, 16);
 
@@ -186,8 +195,13 @@ io.on('connection', (socket) => {
         const player = gameState.players.get(socket.id);
         if (player && player.alive && typeof direction === 'number') {
             player.direction = direction;
-            console.log(`Player ${socket.id} direction updated to ${direction}`);
         }
+    });
+    
+    // 즉시 현재 게임 상태 전송
+    socket.emit('gameUpdate', {
+        players: Array.from(gameState.players.values()),
+        food: gameState.food
     });
     
     socket.on('respawn', () => {

@@ -47,6 +47,9 @@ function connectToServer() {
     socket.on('gameUpdate', (data) => {
         gameData = data;
         myPlayer = gameData.players.find(p => p.id === playerId);
+        if (!myPlayer) {
+            console.log('Player not found in game data');
+        }
         updateUI();
     });
     
@@ -189,10 +192,11 @@ function handleMouseMove(e) {
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
     
-    if (myPlayer && myPlayer.alive) {
+    if (myPlayer && myPlayer.alive && socket && socket.connected) {
         const centerX = canvas.width / 2;
         const centerY = canvas.height / 2;
         const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
+        console.log('Sending direction:', angle);
         socket.emit('updateDirection', angle);
     }
 }
