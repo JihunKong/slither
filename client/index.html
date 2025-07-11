@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>멀티플레이어 스네이크 게임</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="info-panel">
+            <h1>스네이크 게임</h1>
+            <div id="playerInfo">
+                <p>점수: <span id="score">0</span></p>
+                <p>플레이어: <span id="playerCount">0</span>/20</p>
+            </div>
+            <div id="leaderboard">
+                <h3>순위표</h3>
+                <ol id="leaderboardList"></ol>
+            </div>
+            <button id="respawnBtn" style="display: none;">다시 시작</button>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <div id="gameFullMessage" style="display: none;">
+        <h2>게임이 가득 찼습니다!</h2>
+        <p>최대 20명까지만 참가할 수 있습니다.</p>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>

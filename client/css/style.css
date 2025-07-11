@@ -1,0 +1,106 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #1a1a1a;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.game-container {
+    display: flex;
+    gap: 20px;
+    padding: 20px;
+}
+
+.info-panel {
+    background-color: #2a2a2a;
+    padding: 20px;
+    border-radius: 10px;
+    min-width: 200px;
+}
+
+.info-panel h1 {
+    font-size: 24px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+#playerInfo {
+    margin-bottom: 20px;
+}
+
+#playerInfo p {
+    margin: 10px 0;
+    font-size: 16px;
+}
+
+#leaderboard {
+    background-color: #333;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+#leaderboard h3 {
+    margin-bottom: 10px;
+    font-size: 18px;
+}
+
+#leaderboardList {
+    list-style: none;
+    padding-left: 0;
+}
+
+#leaderboardList li {
+    padding: 5px 0;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+}
+
+#gameCanvas {
+    border: 2px solid #444;
+    background-color: #0a0a0a;
+    border-radius: 10px;
+}
+
+#respawnBtn {
+    width: 100%;
+    padding: 10px;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+#respawnBtn:hover {
+    background-color: #45a049;
+}
+
+#gameFullMessage {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: #333;
+    padding: 30px;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+#gameFullMessage h2 {
+    margin-bottom: 10px;
+    color: #ff6b6b;
+}
