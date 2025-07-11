@@ -80,6 +80,11 @@ function createSnake(playerId) {
 
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
+    
+    // 디버그: 함수 호출 확인
+    if (frameCount % 60 === 0) {
+        console.log(`[DEBUG] updateSnakePosition called for snake ${snake.id}`);
+    }
 
     // 이전 위치들을 저장
     const previousPositions = snake.segments.map(segment => ({
@@ -89,11 +94,20 @@ function updateSnakePosition(snake) {
 
     // 머리 이동
     const head = snake.segments[0];
+    const oldX = head.x;
+    const oldY = head.y;
+    
     const moveX = Math.cos(snake.direction) * snake.speed;
     const moveY = Math.sin(snake.direction) * snake.speed;
     
     head.x += moveX;
     head.y += moveY;
+    
+    // 디버그: 실제 이동 확인
+    if (frameCount % 60 === 0) {
+        console.log(`[DEBUG] Head moved from (${oldX.toFixed(1)},${oldY.toFixed(1)}) to (${head.x.toFixed(1)},${head.y.toFixed(1)})`);
+        console.log(`[DEBUG] Direction: ${snake.direction}, moveX: ${moveX}, moveY: ${moveY}`);
+    }
 
     // 경계 처리
     if (head.x < 0) head.x = GAME_WIDTH;
