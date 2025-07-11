@@ -81,9 +81,11 @@ function createSnake(playerId) {
 function updateSnakePosition(snake) {
     if (!snake.alive) return;
     
-    // 디버그: 함수 호출 확인
-    if (frameCount % 60 === 0) {
-        console.log(`[DEBUG] updateSnakePosition called for snake ${snake.id}`);
+    // 디버그: 처음 몇 프레임 동안 확인
+    if (frameCount <= 300) {
+        if (frameCount % 20 === 0) {
+            console.log(`[DEBUG] updateSnakePosition called for snake ${snake.id} at frame ${frameCount}`);
+        }
     }
 
     // 이전 위치들을 저장
@@ -104,7 +106,7 @@ function updateSnakePosition(snake) {
     head.y += moveY;
     
     // 디버그: 실제 이동 확인
-    if (frameCount % 60 === 0) {
+    if (frameCount <= 300 && frameCount % 20 === 0) {
         console.log(`[DEBUG] Head moved from (${oldX.toFixed(1)},${oldY.toFixed(1)}) to (${head.x.toFixed(1)},${head.y.toFixed(1)})`);
         console.log(`[DEBUG] Direction: ${snake.direction}, moveX: ${moveX}, moveY: ${moveY}`);
     }
@@ -190,10 +192,17 @@ const gameLoopInterval = setInterval(() => {
     frameCount++;
     
     try {
+        // 첫 10프레임 동안 디버깅
+        if (frameCount <= 10 && gameState.players.size > 0) {
+            console.log(`[GAME LOOP] Frame ${frameCount}: Updating ${gameState.players.size} players`);
+        }
         
         // 모든 플레이어 업데이트
         gameState.players.forEach(snake => {
             if (snake.alive) {
+                if (frameCount <= 10) {
+                    console.log(`[GAME LOOP] Calling updateSnakePosition for snake ${snake.id}`);
+                }
                 updateSnakePosition(snake);
                 checkFoodCollision(snake);
             }
