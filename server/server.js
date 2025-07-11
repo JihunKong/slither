@@ -161,6 +161,8 @@ console.log('Starting game loop...');
 
 // 간단한 게임 루프
 const gameLoopInterval = setInterval(() => {
+    frameCount++;
+    
     try {
         // 플레이어 수 확인
         if (frameCount % 300 === 0 && gameState.players.size > 0) {
@@ -210,7 +212,6 @@ const gameLoopInterval = setInterval(() => {
         io.emit('gameUpdate', gameData);
         
         // 디버깅 로그 (1초마다)
-        frameCount++;
         if (frameCount % 60 === 0) {
             console.log(`Frame ${frameCount}: ${gameState.players.size} players, ${io.engine.clientsCount} clients connected`);
             if (gameState.players.size > 0) {
@@ -249,6 +250,9 @@ io.on('connection', (socket) => {
     const snake = createSnake(socket.id);
     gameState.players.set(socket.id, snake);
     
+    console.log(`Snake created at: ${snake.segments[0].x.toFixed(1)}, ${snake.segments[0].y.toFixed(1)}, direction: ${snake.direction.toFixed(2)}`);
+    console.log(`Snake segments: ${snake.segments.map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
+    
     socket.emit('init', {
         playerId: socket.id,
         gameWidth: GAME_WIDTH,
@@ -270,6 +274,18 @@ io.on('connection', (socket) => {
         players: Array.from(gameState.players.values()),
         food: gameState.food
     });
+    
+    // 테스트: 3초 후 뱀 위치 확인
+    setTimeout(() => {
+        const testSnake = gameState.players.get(socket.id);
+        if (testSnake) {
+            console.log(`After 3 seconds - Snake ${socket.id} at: ${testSnake.segments[0].x.toFixed(1)}, ${testSnake.segments[0].y.toFixed(1)}`);
+            
+            // 강제로 위치 변경 테스트
+            testSnake.segments[0].x += 50;
+            console.log(`Forced move - New position: ${testSnake.segments[0].x.toFixed(1)}, ${testSnake.segments[0].y.toFixed(1)}`);
+        }
+    }, 3000);
     
     socket.on('respawn', () => {
         const player = gameState.players.get(socket.id);
