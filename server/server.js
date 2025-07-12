@@ -172,20 +172,62 @@ function updateSnakePosition(snake) {
         console.log(`  Move was: (${moveX.toFixed(2)},${moveY.toFixed(2)})`);
     }
 
-    // 경계 처리 - 반사
-    if (head.x < 0 || head.x > GAME_WIDTH) {
-        snake.direction = Math.PI - snake.direction; // 수평 반사
-        head.x = Math.max(0, Math.min(GAME_WIDTH, head.x));
+    // 경계 처리 - 안전한 반사
+    const margin = 10; // 벽과의 안전 거리
+    
+    if (head.x <= margin) {
+        head.x = margin;
+        // 왼쪽 벽에서 반사
+        if (Math.cos(snake.direction) < 0) { // 왼쪽으로 향하고 있을 때만
+            snake.direction = Math.PI - snake.direction;
+        }
+    } else if (head.x >= GAME_WIDTH - margin) {
+        head.x = GAME_WIDTH - margin;
+        // 오른쪽 벽에서 반사
+        if (Math.cos(snake.direction) > 0) { // 오른쪽으로 향하고 있을 때만
+            snake.direction = Math.PI - snake.direction;
+        }
     }
-    if (head.y < 0 || head.y > GAME_HEIGHT) {
-        snake.direction = -snake.direction; // 수직 반사
-        head.y = Math.max(0, Math.min(GAME_HEIGHT, head.y));
+    
+    if (head.y <= margin) {
+        head.y = margin;
+        // 위쪽 벽에서 반사
+        if (Math.sin(snake.direction) < 0) { // 위쪽으로 향하고 있을 때만
+            snake.direction = -snake.direction;
+        }
+    } else if (head.y >= GAME_HEIGHT - margin) {
+        head.y = GAME_HEIGHT - margin;
+        // 아래쪽 벽에서 반사
+        if (Math.sin(snake.direction) > 0) { // 아래쪽으로 향하고 있을 때만
+            snake.direction = -snake.direction;
+        }
     }
+    
+    // 각도 정규화 (0 ~ 2PI)
+    while (snake.direction < 0) snake.direction += 2 * Math.PI;
+    while (snake.direction >= 2 * Math.PI) snake.direction -= 2 * Math.PI;
 
-    // 나머지 세그먼트들이 앞 세그먼트의 이전 위치로 이동
+    // 나머지 세그먼트들이 앞 세그먼트의 이전 위치로 이동 (최소 거리 유지)
     for (let i = 1; i < snake.segments.length; i++) {
-        snake.segments[i].x = previousPositions[i - 1].x;
-        snake.segments[i].y = previousPositions[i - 1].y;
+        const prevSegment = snake.segments[i - 1];
+        const currentSegment = snake.segments[i];
+        const targetX = previousPositions[i - 1].x;
+        const targetY = previousPositions[i - 1].y;
+        
+        // 앞 세그먼트와의 거리 확인
+        const dx = prevSegment.x - targetX;
+        const dy = prevSegment.y - targetY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // 너무 가까우면 약간 뒤로
+        if (distance < 5) {
+            const angle = Math.atan2(dy, dx);
+            snake.segments[i].x = prevSegment.x - Math.cos(angle) * 6;
+            snake.segments[i].y = prevSegment.y - Math.sin(angle) * 6;
+        } else {
+            snake.segments[i].x = targetX;
+            snake.segments[i].y = targetY;
+        }
     }
 }
 
@@ -204,12 +246,24 @@ function checkFoodCollision(snake) {
         const distance = Math.sqrt(Math.pow(head.x - food.x, 2) + Math.pow(head.y - food.y, 2));
         
         if (distance < 15) {
-            // 꼬리 끝에 새 세그먼트 추가 (마지막 세그먼트와 같은 위치)
-            const lastSegment = snake.segments[snake.segments.length - 1];
-            snake.segments.push({
-                x: lastSegment.x,
-                y: lastSegment.y
-            });
+            // 먹이 값에 따라 여러 개의 세그먼트 추가
+            const foodValue = food.value || 10;
+            const segmentsToAdd = Math.max(1, Math.floor(foodValue / 10)); // 10점당 1세그먼트
+            
+            for (let j = 0; j < segmentsToAdd; j++) {
+                const lastSegment = snake.segments[snake.segments.length - 1];
+                const secondLastSegment = snake.segments[snake.segments.length - 2] || lastSegment;
+                
+                // 마지막 두 세그먼트 사이의 방향에 맞춰 추가
+                const dx = lastSegment.x - secondLastSegment.x;
+                const dy = lastSegment.y - secondLastSegment.y;
+                const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                
+                snake.segments.push({
+                    x: lastSegment.x + (dx / dist) * 2,
+                    y: lastSegment.y + (dy / dist) * 2
+                });
+            }
             
             // 점수 계산
             const foodValue = food.value || 10; // 특별 먹이는 더 높은 점수
@@ -299,9 +353,9 @@ function checkSnakeCollisions() {
             const snake2 = players[j];
             if (!snake2.alive) continue;
             
-            // 자기 자신과의 충돌 검사시 더 많은 세그먼트 건너뛰기 (급격한 회전 고려)
-            const startIndex = i === j ? 4 : 0; // 처음 4개 세그먼트는 건너뛰기
-            const minDistance = i === j ? 5 : 10; // 자기 충돌 거리를 더 크게
+            // 자기 자신과의 충돌 검사시 충분한 세그먼트 건너뛰기
+            const startIndex = i === j ? 6 : 0; // 처음 6개 세그먼트는 무조건 건너뛰기
+            const minDistance = i === j ? 9 : 10; // 자기 충돌 거리를 더 크게 (9 pixels)
             
             for (let k = startIndex; k < snake2.segments.length; k++) {
                 const segment = snake2.segments[k];
@@ -309,7 +363,12 @@ function checkSnakeCollisions() {
                 
                 if (distance < minDistance) {
                     if (i === j) {
-                        // 자기 자신과 충돌 - 즉시 죽음
+                        // 자기 자신과 충돌 - 디버그 후 죽음
+                        console.log(`Self-collision detected for ${snake1.name}:`);
+                        console.log(`  Head at: (${head1.x.toFixed(1)}, ${head1.y.toFixed(1)})`);
+                        console.log(`  Collided with segment ${k} at: (${segment.x.toFixed(1)}, ${segment.y.toFixed(1)})`);
+                        console.log(`  Distance: ${distance.toFixed(2)}, threshold: ${minDistance}`);
+                        console.log(`  Snake length: ${snake1.segments.length}`);
                         snake1.alive = false;
                         dropSpecialFood(snake1);
                     } else {
