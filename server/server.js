@@ -266,7 +266,6 @@ function checkFoodCollision(snake) {
             }
             
             // 점수 계산
-            const foodValue = food.value || 10; // 특별 먹이는 더 높은 점수
             snake.score += foodValue;
             snake.foodEaten += 1;
             
