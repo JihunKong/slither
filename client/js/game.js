@@ -77,12 +77,19 @@ function connectToServer() {
             console.log('Player not found in game data. PlayerId:', playerId);
             console.log('Available players:', data.players.map(p => p.id));
         }
+        
+        // Only update button if game state or host status changed
+        const prevGameStarted = gameStarted;
+        const prevIsHost = isHost;
+        
         gameStarted = data.gameStarted;
         isHost = data.roomHost === playerId;
         updateUI();
-        setTimeout(() => {
+        
+        // Only update button if status changed
+        if (prevGameStarted !== gameStarted || prevIsHost !== isHost) {
             updateStartButton();
-        }, 0);
+        }
         
         // 디버깅: 업데이트 횟수와 위치 변화 확인
         updateCount++;
@@ -381,45 +388,50 @@ function handleMouseMove(e) {
 
 function updateStartButton() {
     const existingBtn = document.getElementById('startGameBtn');
-    if (existingBtn) {
-        existingBtn.remove();
-    }
     
     console.log('updateStartButton - isHost:', isHost, 'gameStarted:', gameStarted);
     
     if (isHost && !gameStarted) {
-        const startBtn = document.createElement('button');
-        startBtn.id = 'startGameBtn';
-        startBtn.textContent = '게임 시작';
-        startBtn.style.cssText = `
-            width: 100%;
-            padding: 10px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: background-color 0.3s;
-            margin-top: 20px;
-        `;
-        startBtn.addEventListener('click', () => {
-            console.log('Start button clicked!');
-            if (socket && socket.connected) {
-                console.log('Emitting startGame event');
-                socket.emit('startGame');
+        // Only create button if it doesn't exist
+        if (!existingBtn) {
+            const startBtn = document.createElement('button');
+            startBtn.id = 'startGameBtn';
+            startBtn.textContent = '게임 시작';
+            startBtn.style.cssText = `
+                width: 100%;
+                padding: 10px;
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                font-size: 16px;
+                transition: background-color 0.3s;
+                margin-top: 20px;
+            `;
+            startBtn.addEventListener('click', () => {
+                console.log('Start button clicked!');
+                if (socket && socket.connected) {
+                    console.log('Emitting startGame event');
+                    socket.emit('startGame');
+                } else {
+                    console.log('Socket not connected');
+                }
+            });
+            
+            // 순위표 아래에 추가
+            const leaderboard = document.getElementById('leaderboard');
+            if (leaderboard) {
+                leaderboard.insertAdjacentElement('afterend', startBtn);
+                console.log('Start button added to DOM');
             } else {
-                console.log('Socket not connected');
+                console.error('Leaderboard element not found');
             }
-        });
-        
-        // 순위표 아래에 추가
-        const leaderboard = document.getElementById('leaderboard');
-        if (leaderboard) {
-            leaderboard.insertAdjacentElement('afterend', startBtn);
-            console.log('Start button added to DOM');
-        } else {
-            console.error('Leaderboard element not found');
+        }
+    } else {
+        // Remove button if conditions are not met
+        if (existingBtn) {
+            existingBtn.remove();
         }
     }
 }
