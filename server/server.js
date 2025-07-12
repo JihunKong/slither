@@ -378,11 +378,26 @@ const gameLoopInterval = setInterval(() => {
                 if (snake.alive) {
                     updateSnakePosition(snake);
                     checkFoodCollision(snake);
+                    
+                    // 승리 조건 검사
+                    if (snake.displayScore >= gameState.winScore && !gameState.winner) {
+                        gameState.winner = snake.id;
+                        console.log('Winner:', snake.name, 'with score:', snake.displayScore);
+                        io.emit('gameWon', {
+                            winnerId: snake.id,
+                            winnerName: snake.name,
+                            score: snake.displayScore
+                        });
+                        // 게임 리셋
+                        setTimeout(() => {
+                            resetGame();
+                        }, 5000);
+                    }
                 }
             });
             
             // 충돌 검사
-            if (gameState.players.size > 0) {
+            if (gameState.players.size > 0 && !gameState.winner) {
                 checkSnakeCollisions();
             }
         }

@@ -68,6 +68,42 @@ function connectToServer() {
         alert('최소 2명 이상의 플레이어가 필요합니다!');
     });
     
+    socket.on('gameWon', (data) => {
+        console.log('Game won!', data);
+        // 승리 메시지 표시
+        const winMessage = document.createElement('div');
+        winMessage.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 215, 0, 0.9);
+            color: black;
+            padding: 30px;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 1000;
+        `;
+        winMessage.innerHTML = `
+            <h2>🎆 축하합니다! 🎆</h2>
+            <p>${data.winnerName}님이 ${data.score}점으로 승리하셨습니다!</p>
+            <p>5초 후 새 게임이 시작됩니다...</p>
+        `;
+        document.body.appendChild(winMessage);
+        
+        setTimeout(() => {
+            winMessage.remove();
+        }, 5000);
+    });
+    
+    socket.on('gameReset', () => {
+        console.log('Game reset');
+        gameStarted = false;
+        updateStartButton();
+    });
+    
     let updateCount = 0;
     let lastPosition = null;
     socket.on('gameUpdate', (data) => {
@@ -131,6 +167,9 @@ function updateUI() {
             else if (myPlayer.foodEaten >= 10) multiplier = '1.2x';
             scoreElement.textContent += ` (${multiplier})`;
         }
+        
+        // 승리 목표 표시
+        scoreElement.textContent += ' / 10,000';
         
         if (!myPlayer.alive) {
             respawnBtn.style.display = 'block';
