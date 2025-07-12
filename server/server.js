@@ -24,16 +24,39 @@ const SNAKE_SPEED = 3.5; // 기본 속도 증가
 const FOOD_COUNT = 150; // 맵 확장에 맞춰 먹이 증가
 const ROOM_WAIT_TIME = 5000; // 5초 대기 후 게임 시작
 
+// 사용자 ID 관리
+const userIdCounter = { value: 1000 };
+const socketToUserId = new Map(); // socket.id -> userId 매핑
+const userIdToSocket = new Map(); // userId -> socket.id 매핑
+
+// 방 관리
+const roomIdCounter = { value: 1000 };
+const rooms = new Map(); // roomId -> room 객체
+const socketToRoom = new Map(); // socket.id -> roomId 매핑
+
 app.use(express.static(path.join(__dirname, '../client')));
 
-const gameState = {
-    players: new Map(),
-    food: [],
-    roomHost: null,
-    gameStarted: false,
-    readyPlayers: new Set(),
-    gameStartTime: null
-};
+// 루트 경로를 room-select.html로 리다이렉트
+app.get('/', (req, res) => {
+    res.redirect('/room-select.html');
+});
+
+// 기본 게임 상태 구조 (각 방마다 복사됨)
+function createGameState() {
+    return {
+        players: new Map(),
+        food: [],
+        roomHost: null,
+        gameStarted: false,
+        readyPlayers: new Set(),
+        gameStartTime: null,
+        winner: null,
+        winScore: 10000
+    };
+}
+
+// 호환성을 위한 임시 단일 gameState
+let gameState = createGameState();
 
 function generateRandomPosition() {
     return {
@@ -45,6 +68,59 @@ function generateRandomPosition() {
 function generateRandomColor() {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#F7DC6F', '#B8E994', '#FD79A8', '#A29BFE', '#FFEAA7'];
     return colors[Math.floor(Math.random() * colors.length)];
+}
+
+// 고유한 사용자 ID 생성
+function generateUserId() {
+    return `Player${userIdCounter.value++}`;
+}
+
+// 고유한 방 ID 생성
+function generateRoomId() {
+    return `Room-${roomIdCounter.value++}`;
+}
+
+// 새 방 생성
+function createRoom(roomId, hostUserId) {
+    const room = {
+        id: roomId,
+        gameState: createGameState(),
+        createdAt: Date.now(),
+        hostUserId: hostUserId,
+        isPublic: true,
+        maxPlayers: MAX_PLAYERS
+    };
+    rooms.set(roomId, room);
+    console.log(`Room ${roomId} created by ${hostUserId}`);
+    return room;
+}
+
+// 방 제거
+function removeRoom(roomId) {
+    rooms.delete(roomId);
+    console.log(`Room ${roomId} removed`);
+}
+
+// 플레이어가 있는 방 찾기
+function getRoomBySocketId(socketId) {
+    const roomId = socketToRoom.get(socketId);
+    return roomId ? rooms.get(roomId) : null;
+}
+
+// 공개 방 목록 가져오기
+function getPublicRooms() {
+    const publicRooms = [];
+    rooms.forEach((room, roomId) => {
+        if (room.isPublic && room.gameState.players.size < room.maxPlayers) {
+            publicRooms.push({
+                id: roomId,
+                playerCount: room.gameState.players.size,
+                maxPlayers: room.maxPlayers,
+                gameStarted: room.gameState.gameStarted
+            });
+        }
+    });
+    return publicRooms;
 }
 
 function initializeFood() {
@@ -100,8 +176,9 @@ function createSnake(playerId) {
         direction: initialDirection,
         speed: SNAKE_SPEED,
         color: generateRandomColor(),
-        name: `Player ${gameState.players.size + 1}`,
+        name: `Player ${socket.id}`, // 임시 이름, 나중에 userId로 업데이트
         score: 0,
+        userId: null, // joinGame 시 설정됨
         foodEaten: 0, // 먹은 먹이 개수
         displayScore: 0, // 보너스가 적용된 표시 점수
         alive: true,
@@ -519,14 +596,107 @@ console.log('Server initialized, game loop running at 60 FPS');
 io.on('connection', (socket) => {
     console.log('New player connected:', socket.id);
     
-    if (gameState.players.size >= MAX_PLAYERS) {
-        socket.emit('gameFull');
-        socket.disconnect();
-        return;
-    }
+    // 클라이언트가 기존 userId를 가지고 있는지 확인
+    socket.on('checkUserId', (existingUserId) => {
+        let userId = existingUserId;
+        let isNewUser = false;
+        
+        // 유효한 기존 userId가 없으면 새로 생성
+        if (!userId || !userId.startsWith('Player')) {
+            userId = generateUserId();
+            isNewUser = true;
+        }
+        
+        // 매핑 업데이트
+        socketToUserId.set(socket.id, userId);
+        userIdToSocket.set(userId, socket.id);
+        
+        socket.emit('userIdAssigned', { userId, isNewUser });
+        console.log(`User ${userId} connected with socket ${socket.id}`);
+    });
     
-    const snake = createSnake(socket.id);
-    gameState.players.set(socket.id, snake);
+    // 방 목록 요청
+    socket.on('getRoomList', () => {
+        const publicRooms = getPublicRooms();
+        socket.emit('roomList', publicRooms);
+    });
+    
+    // 새 방 만들기
+    socket.on('createRoom', (data) => {
+        const { userId, isPublic } = data;
+        const roomId = generateRoomId();
+        const room = createRoom(roomId, userId);
+        room.isPublic = isPublic !== false;
+        
+        // 방에 참가
+        socket.join(roomId);
+        socketToRoom.set(socket.id, roomId);
+        
+        socket.emit('roomCreated', { roomId, isHost: true });
+        console.log(`User ${userId} created room ${roomId}`);
+    });
+    
+    // 방 입장
+    socket.on('joinRoom', (data) => {
+        const { roomId, userId } = data;
+        const room = rooms.get(roomId);
+        
+        if (!room) {
+            socket.emit('roomError', { message: '존재하지 않는 방입니다.' });
+            return;
+        }
+        
+        if (room.gameState.players.size >= room.maxPlayers) {
+            socket.emit('roomError', { message: '방이 가듍 찼습니다.' });
+            return;
+        }
+        
+        // 방에 참가
+        socket.join(roomId);
+        socketToRoom.set(socket.id, roomId);
+        
+        socket.emit('roomJoined', { roomId, isHost: room.hostUserId === userId });
+        console.log(`User ${userId} joined room ${roomId}`);
+    });
+    
+    // 빠른 시작 (자동 매칭)
+    socket.on('quickPlay', (data) => {
+        const { userId } = data;
+        
+        // 참가 가능한 공개 방 찾기
+        let foundRoom = null;
+        for (const [roomId, room] of rooms) {
+            if (room.isPublic && 
+                room.gameState.players.size < room.maxPlayers && 
+                !room.gameState.gameStarted) {
+                foundRoom = room;
+                break;
+            }
+        }
+        
+        if (foundRoom) {
+            // 기존 방에 참가
+            socket.join(foundRoom.id);
+            socketToRoom.set(socket.id, foundRoom.id);
+            socket.emit('roomJoined', { roomId: foundRoom.id, isHost: false });
+        } else {
+            // 새 방 생성
+            const roomId = generateRoomId();
+            const room = createRoom(roomId, userId);
+            socket.join(roomId);
+            socketToRoom.set(socket.id, roomId);
+            socket.emit('roomCreated', { roomId, isHost: true });
+        }
+    });
+    
+    socket.on('joinGame', (userId) => {
+        if (!userId) return;
+        
+        const snake = createSnake(socket.id);
+        const userNumber = userId.replace('Player', '');
+        snake.name = `Player ${userNumber}`;
+        snake.userId = userId;
+        gameState.players.set(socket.id, snake);
     
     // 첫 번째 플레이어가 방장
     if (!gameState.roomHost) {
@@ -534,12 +704,14 @@ io.on('connection', (socket) => {
         console.log('Room host set to:', socket.id);
     }
     
-    socket.emit('init', {
-        playerId: socket.id,
-        gameWidth: GAME_WIDTH,
-        gameHeight: GAME_HEIGHT,
-        isHost: gameState.roomHost === socket.id,
-        gameStarted: gameState.gameStarted
+        socket.emit('init', {
+            playerId: socket.id,
+            userId: userId,
+            gameWidth: GAME_WIDTH,
+            gameHeight: GAME_HEIGHT,
+            isHost: gameState.roomHost === socket.id,
+            gameStarted: gameState.gameStarted
+        });
     });
     
     socket.on('updateDirection', (direction) => {
@@ -597,7 +769,15 @@ io.on('connection', (socket) => {
     });
     
     socket.on('disconnect', () => {
-        console.log('Player disconnected:', socket.id);
+        const userId = socketToUserId.get(socket.id);
+        console.log('Player disconnected:', socket.id, 'userId:', userId);
+        
+        // 매핑 정리
+        if (userId) {
+            socketToUserId.delete(socket.id);
+            userIdToSocket.delete(userId);
+        }
+        
         gameState.players.delete(socket.id);
         
         // 방장이 나갔으면 새로운 방장 지정

@@ -11,6 +11,7 @@
         <div class="info-panel">
             <h1>스네이크 게임</h1>
             <div id="playerInfo">
+                <p>나의 ID: <span id="userId" style="color: #FFD700; font-weight: bold;">연결 중...</span></p>
                 <p>점수: <span id="score">0</span></p>
                 <p>플레이어: <span id="playerCount">0</span>/20</p>
             </div>
@@ -26,7 +27,12 @@
         <h2>게임이 가득 찼습니다!</h2>
         <p>최대 20명까지만 참가할 수 있습니다.</p>
     </div>
+    
+    <!-- 모바일 조이스틱 컨테이너 -->
+    <div id="joystickContainer" class="joystick-container"></div>
+    
     <script src="/socket.io/socket.io.js"></script>
+    <script src="js/joystick.js"></script>
     <script src="js/game.js"></script>
 </body>
 </html>

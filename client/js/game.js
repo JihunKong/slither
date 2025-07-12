@@ -8,6 +8,7 @@ const gameFullMessage = document.getElementById('gameFullMessage');
 
 let socket;
 let playerId;
+let userId = null;
 let gameWidth = 2400;
 let gameHeight = 1800;
 let camera = { x: 0, y: 0 };
@@ -17,6 +18,23 @@ let gameData = { players: [], food: [] };
 let myPlayer = null;
 let isHost = false;
 let gameStarted = false;
+let joystick = null;
+
+// localStorage에서 userId 불러오기
+function loadUserId() {
+    const stored = localStorage.getItem('snakeGameUserId');
+    if (stored) {
+        console.log('Loaded userId from localStorage:', stored);
+        return stored;
+    }
+    return null;
+}
+
+// localStorage에 userId 저장
+function saveUserId(id) {
+    localStorage.setItem('snakeGameUserId', id);
+    console.log('Saved userId to localStorage:', id);
+}
 
 canvas.width = 800;
 canvas.height = 600;
@@ -33,6 +51,22 @@ function connectToServer() {
     
     socket.on('connect', () => {
         console.log('Connected to server with ID:', socket.id);
+        
+        // 기존 userId 확인 요청
+        const existingUserId = loadUserId();
+        socket.emit('checkUserId', existingUserId);
+    });
+    
+    socket.on('userIdAssigned', (data) => {
+        userId = data.userId;
+        if (data.isNewUser) {
+            saveUserId(userId);
+        }
+        console.log('User ID assigned:', userId);
+        updateUserIdDisplay();
+        
+        // userId를 받은 후 게임 참가
+        socket.emit('joinGame', userId);
     });
     
     socket.on('connect_error', (error) => {
@@ -42,11 +76,13 @@ function connectToServer() {
     socket.on('init', (data) => {
         console.log('Initialized with data:', data);
         playerId = data.playerId;
+        userId = data.userId || userId;
         gameWidth = data.gameWidth;
         gameHeight = data.gameHeight;
         isHost = data.isHost;
         gameStarted = data.gameStarted;
-        console.log('Init - isHost:', isHost, 'gameStarted:', gameStarted);
+        console.log('Init - isHost:', isHost, 'gameStarted:', gameStarted, 'userId:', userId);
+        updateUserIdDisplay();
         // updateStartButton을 약간의 지연 후 호출하여 DOM이 준비되도록 함
         setTimeout(() => {
             updateStartButton();
@@ -152,6 +188,13 @@ function connectToServer() {
     socket.on('disconnect', (reason) => {
         console.log('Disconnected from server:', reason);
     });
+}
+
+function updateUserIdDisplay() {
+    const userIdElement = document.getElementById('userId');
+    if (userIdElement && userId) {
+        userIdElement.textContent = userId;
+    }
 }
 
 function updateUI() {
@@ -560,10 +603,103 @@ respawnBtn.addEventListener('click', () => {
     }
 });
 
+// 방 나가기 버튼 추가
+const leaveRoomBtn = document.createElement('button');
+leaveRoomBtn.id = 'leaveRoomBtn';
+leaveRoomBtn.textContent = '방 나가기';
+leaveRoomBtn.style.cssText = `
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    padding: 10px 20px;
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    z-index: 100;
+`;
+leaveRoomBtn.addEventListener('click', () => {
+    if (confirm('정말 방을 나가시겠습니까?')) {
+        localStorage.removeItem('roomId');
+        window.location.href = '/room-select.html';
+    }
+});
+document.body.appendChild(leaveRoomBtn);
+
 // 페이지 로드 완료 후 연결 시작
 window.addEventListener('load', () => {
     connectToServer();
     draw();
+    
+    // 방 ID 표시
+    const roomIdDisplay = document.createElement('div');
+    roomIdDisplay.style.cssText = `
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        padding: 10px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #FFD700;
+        border-radius: 5px;
+        font-size: 14px;
+        z-index: 100;
+    `;
+    roomIdDisplay.textContent = `방 코드: ${localStorage.getItem('roomId') || 'Unknown'}`;
+    document.body.appendChild(roomIdDisplay);
+    
+    // 가상 조이스틱 초기화
+    if (window.VirtualJoystick) {
+        joystick = new VirtualJoystick('joystickContainer');
+        
+        // 조이스틱 변경 이벤트
+        joystick.setOnChange((angle, distance) => {
+            if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted && distance > 0.1) {
+                socket.emit('updateDirection', angle);
+            }
+        });
+        
+        // 조이스틱 멈춤 이벤트
+        joystick.setOnStop(() => {
+            // 조이스틱을 놓을 때는 현재 방향 유지
+        });
+    }
+    
+    // 모바일 UI 컨트롤 추가
+    if (window.innerWidth <= 768) {
+        const mobileControls = document.createElement('div');
+        mobileControls.className = 'mobile-controls';
+        mobileControls.innerHTML = `
+            <button class="mobile-control-btn" id="toggleInfoBtn">📊</button>
+            <button class="mobile-control-btn" id="fullscreenBtn">⛶</button>
+        `;
+        document.body.appendChild(mobileControls);
+        
+        // 정보 패널 토글
+        document.getElementById('toggleInfoBtn').addEventListener('click', () => {
+            const infoPanel = document.querySelector('.info-panel');
+            infoPanel.classList.toggle('show');
+        });
+        
+        // 전체화면 토글
+        document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    console.log('Fullscreen error:', err);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        // 화면 방향 고정 시도
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(err => {
+                console.log('Orientation lock not supported');
+            });
+        }
+    }
 });
 
 // 전역으로 디버깅 함수 추가
