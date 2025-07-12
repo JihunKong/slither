@@ -689,7 +689,8 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('joinGame', (userId) => {
+    socket.on('joinGame', (data) => {
+        const userId = data.userId || data; // Support both old and new format
         if (!userId) return;
         
         const snake = createSnake(socket.id);
