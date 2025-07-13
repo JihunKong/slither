@@ -25,6 +25,8 @@ let sessionKills = 0;
 let sessionFoodEaten = 0;
 let sessionStartTime = null;
 let roomId = null;
+let respawnCountdownInterval = null;
+let respawnCountdownElement = null;
 
 // localStorage에서 roomId 불러오기
 function loadRoomId() {
@@ -142,6 +144,13 @@ function connectToServer() {
         // updateStartButton을 약간의 지연 후 호출하여 DOM이 준비되도록 함
         setTimeout(() => {
             updateStartButton();
+            
+            // Start tutorial for new players on first connection
+            if (!window.tutorialManager.tutorialCompleted) {
+                setTimeout(() => {
+                    window.tutorialManager.start();
+                }, 1000);
+            }
         }, 100);
     });
     
@@ -158,13 +167,6 @@ function connectToServer() {
         
         // Start progression session
         window.progressionManager.onGameStart();
-        
-        // Start tutorial for new players
-        if (!window.tutorialManager.tutorialCompleted) {
-            setTimeout(() => {
-                window.tutorialManager.start();
-            }, 1000);
-        }
     });
     
     socket.on('newHost', (data) => {
@@ -177,42 +179,97 @@ function connectToServer() {
         alert('최소 2명 이상의 플레이어가 필요합니다!');
     });
     
-    socket.on('gameWon', (data) => {
-        console.log('Game won!', data);
+    socket.on('personalVictory', (data) => {
+        console.log('Personal victory!', data);
         window.soundManager.playVictory();
         
-        // Update progression if we won
-        if (data.winnerId === playerId) {
-            const finalScore = myPlayer ? (myPlayer.displayScore || myPlayer.score) : 0;
-            window.progressionManager.onGameEnd(finalScore, true, sessionFoodEaten, sessionKills);
-        }
+        // Update progression - we won!
+        const finalScore = myPlayer ? (myPlayer.displayScore || myPlayer.score) : 0;
+        window.progressionManager.onGameEnd(finalScore, true, sessionFoodEaten, sessionKills);
         
-        // 승리 메시지 표시
+        // 개인 승리 메시지 표시
         const winMessage = document.createElement('div');
         winMessage.style.cssText = `
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background-color: rgba(255, 215, 0, 0.9);
+            background-color: rgba(255, 215, 0, 0.95);
             color: black;
-            padding: 30px;
-            border-radius: 10px;
-            font-size: 24px;
+            padding: 40px;
+            border-radius: 15px;
+            font-size: 28px;
             font-weight: bold;
             text-align: center;
             z-index: 1000;
+            box-shadow: 0 0 30px rgba(255, 215, 0, 0.8);
+            animation: bounce 0.6s ease-out;
         `;
         winMessage.innerHTML = `
-            <h2>🎆 축하합니다! 🎆</h2>
-            <p>${data.winnerName}님이 ${data.score}점으로 승리하셨습니다!</p>
-            <p>5초 후 새 게임이 시작됩니다...</p>
+            <h2>🏆 승리하셨습니다! 🏆</h2>
+            <p>축하합니다! ${data.score}점 달성!</p>
+            <p style="font-size: 18px; margin-top: 15px;">3초 후 새로 시작합니다...</p>
         `;
         document.body.appendChild(winMessage);
         
+        // CSS animation keyframes 추가
+        if (!document.getElementById('bounce-style')) {
+            const style = document.createElement('style');
+            style.id = 'bounce-style';
+            style.textContent = `
+                @keyframes bounce {
+                    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+                    50% { transform: translate(-50%, -50%) scale(1.1); }
+                    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
         setTimeout(() => {
             winMessage.remove();
-        }, 5000);
+        }, 3000);
+    });
+    
+    socket.on('playerAchievedVictory', (data) => {
+        console.log('Another player achieved victory:', data);
+        
+        // 다른 플레이어 승리 알림 (작고 간단하게)
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            animation: slideIn 0.3s ease-out;
+        `;
+        notification.innerHTML = `
+            🎉 ${data.winnerName}님이 ${data.score}점 달성!
+        `;
+        document.body.appendChild(notification);
+        
+        // CSS animation for slideIn
+        if (!document.getElementById('slideIn-style')) {
+            const style = document.createElement('style');
+            style.id = 'slideIn-style';
+            style.textContent = `
+                @keyframes slideIn {
+                    0% { transform: translateX(100%); opacity: 0; }
+                    100% { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        setTimeout(() => {
+            notification.remove();
+        }, 4000);
     });
     
     socket.on('gameReset', () => {
@@ -247,6 +304,9 @@ function connectToServer() {
             // End game session for progression
             const finalScore = prevPlayer.displayScore || prevPlayer.score;
             window.progressionManager.onGameEnd(finalScore, false, sessionFoodEaten, sessionKills);
+            
+            // Start auto-respawn countdown
+            startRespawnCountdown();
         }
         
         // Check for kills (other players dying)
@@ -402,6 +462,102 @@ function showCountdown() {
             }
         }
     }, 1000);
+}
+
+// 리스폰 카운트다운 시작
+function startRespawnCountdown() {
+    // 기존 카운트다운이 있다면 정리
+    if (respawnCountdownInterval) {
+        clearInterval(respawnCountdownInterval);
+        respawnCountdownInterval = null;
+    }
+    
+    if (respawnCountdownElement) {
+        respawnCountdownElement.remove();
+        respawnCountdownElement = null;
+    }
+    
+    // 카운트다운 UI 생성
+    respawnCountdownElement = document.createElement('div');
+    respawnCountdownElement.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(244, 67, 54, 0.95);
+        color: white;
+        padding: 30px 40px;
+        border-radius: 15px;
+        font-size: 24px;
+        font-weight: bold;
+        text-align: center;
+        z-index: 1000;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
+    `;
+    
+    let countdown = 3;
+    const updateCountdownDisplay = () => {
+        respawnCountdownElement.innerHTML = `
+            <h3 style="margin-bottom: 15px;">💀 게임 오버</h3>
+            <p style="margin: 10px 0; font-size: 20px;">${countdown}초 후 자동 리스폰</p>
+            <p style="font-size: 16px; opacity: 0.8; margin-top: 15px;">
+                <span style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 5px;">스페이스</span> 
+                또는 
+                <span style="background: rgba(255,255,255,0.2); padding: 5px 10px; border-radius: 5px;">클릭</span>
+                으로 즉시 리스폰
+            </p>
+        `;
+    };
+    
+    updateCountdownDisplay();
+    document.body.appendChild(respawnCountdownElement);
+    
+    // 즉시 리스폰 이벤트 리스너
+    const immediateRespawn = () => {
+        clearInterval(respawnCountdownInterval);
+        respawnCountdownInterval = null;
+        respawn();
+    };
+    
+    respawnCountdownElement.addEventListener('click', immediateRespawn);
+    
+    // 스페이스바 이벤트 리스너
+    const spaceKeyHandler = (e) => {
+        if (e.code === 'Space' && respawnCountdownElement) {
+            e.preventDefault();
+            document.removeEventListener('keydown', spaceKeyHandler);
+            immediateRespawn();
+        }
+    };
+    document.addEventListener('keydown', spaceKeyHandler);
+    
+    // 카운트다운 시작
+    respawnCountdownInterval = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+            updateCountdownDisplay();
+        } else {
+            clearInterval(respawnCountdownInterval);
+            respawnCountdownInterval = null;
+            document.removeEventListener('keydown', spaceKeyHandler);
+            respawn();
+        }
+    }, 1000);
+}
+
+// 리스폰 실행
+function respawn() {
+    if (respawnCountdownElement) {
+        respawnCountdownElement.remove();
+        respawnCountdownElement = null;
+    }
+    
+    if (socket && socket.connected) {
+        window.soundManager.playClick();
+        socket.emit('respawn');
+        respawnBtn.style.display = 'none';
+    }
 }
 
 function updateUI() {
@@ -908,11 +1064,12 @@ document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
 
 respawnBtn.addEventListener('click', () => {
-    window.soundManager.playClick();
-    if (socket && socket.connected) {
-        socket.emit('respawn');
-        respawnBtn.style.display = 'none';
+    // 카운트다운이 진행 중이면 정리
+    if (respawnCountdownInterval) {
+        clearInterval(respawnCountdownInterval);
+        respawnCountdownInterval = null;
     }
+    respawn();
 });
 
 // 방 나가기 버튼 추가

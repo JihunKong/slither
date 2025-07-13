@@ -189,7 +189,8 @@ function createSnake(playerId) {
         isBoosting: false, // 부스트 상태
         boostEnergy: 100, // 부스트 에너지 (최대 100)
         invincible: true, // 무적 상태
-        invincibleUntil: Date.now() + 3000 // 3초간 무적
+        invincibleUntil: Date.now() + 3000, // 3초간 무적
+        hasWon: false // 승리 상태
     };
 }
 
@@ -564,27 +565,35 @@ const gameLoopInterval = setInterval(() => {
                     checkFoodCollision(snake);
                     checkPowerUpCollisions(snake);
                     
-                    // 승리 조건 검사
-                    if (snake.displayScore >= gameState.winScore && !gameState.winner) {
-                        gameState.winner = snake.id;
+                    // 승리 조건 검사 - 개별 플레이어 승리 (게임은 계속 진행)
+                    if (snake.displayScore >= gameState.winScore && !snake.hasWon) {
+                        snake.hasWon = true;
                         console.log('Winner:', snake.name, 'with score:', snake.displayScore);
-                        io.emit('gameWon', {
-                            winnerId: snake.id,
+                        
+                        // 승리한 플레이어에게만 승리 메시지 전송
+                        const winnerSocket = [...io.sockets.sockets.values()].find(s => s.playerId === snake.id);
+                        if (winnerSocket) {
+                            winnerSocket.emit('personalVictory', {
+                                winnerId: snake.id,
+                                winnerName: snake.name,
+                                score: snake.displayScore
+                            });
+                        }
+                        
+                        // 다른 플레이어들에게는 누군가 승리했다는 알림만 전송
+                        io.emit('playerAchievedVictory', {
                             winnerName: snake.name,
                             score: snake.displayScore
                         });
-                        // 게임 리셋
+                        
+                        // 승리한 플레이어는 3초 후 리셋 (다른 플레이어는 계속 진행)
                         setTimeout(() => {
-                            // Reset game state
-                            gameState.players.forEach(player => {
-                                resetSnake(player);
-                            });
-                            gameState.winner = null;
-                            gameState.gameStarted = false;
-                            gameState.powerUps = [];
-                            gameState.lastPowerUpSpawn = Date.now();
-                            console.log('Game reset after victory');
-                        }, 5000);
+                            if (snake && snake.hasWon) {
+                                resetSnake(snake);
+                                snake.hasWon = false;
+                                console.log('Winner', snake.name, 'reset to continue playing');
+                            }
+                        }, 3000);
                     }
                 }
             });
