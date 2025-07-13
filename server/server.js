@@ -180,7 +180,7 @@ function createSnake(playerId) {
         direction: initialDirection,
         speed: SNAKE_SPEED,
         color: generateRandomColor(),
-        name: `Player ${socket.id}`, // 임시 이름, 나중에 userId로 업데이트
+        name: `Player ${playerId}`, // 임시 이름, 나중에 userId로 업데이트
         score: 0,
         userId: null, // joinGame 시 설정됨
         foodEaten: 0, // 먹은 먹이 개수
