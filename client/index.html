@@ -42,6 +42,23 @@
                 <p>점수: <span id="score">0</span></p>
                 <p>플레이어: <span id="playerCount">0</span>/20</p>
             </div>
+            <div id="gameStateSection" style="background-color: #333; padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+                <h3 style="margin-bottom: 10px;">게임 상태</h3>
+                <div id="roomInfo" style="margin-bottom: 10px;">
+                    <p style="margin: 5px 0;">방 ID: <span id="roomId" style="color: #4ECDC4; font-weight: bold;">-</span></p>
+                    <p style="margin: 5px 0;">방장: <span id="hostStatus" style="color: #FFD700;">-</span></p>
+                    <p style="margin: 5px 0;">상태: <span id="gameStatus" style="color: #4CAF50;">대기 중</span></p>
+                </div>
+                <div id="startButtonContainer" style="margin-top: 10px;">
+                    <!-- 게임 시작 버튼이 여기에 추가됩니다 -->
+                </div>
+                <div id="waitingMessage" style="display: none; text-align: center; padding: 20px; background-color: #444; border-radius: 5px; margin-top: 10px;">
+                    <p style="color: #FFA726; font-size: 16px; margin: 0;">⏳ 방장이 게임을 시작하기를 기다리는 중...</p>
+                </div>
+                <div id="countdownDisplay" style="display: none; text-align: center; padding: 20px; background-color: #2196F3; border-radius: 5px; margin-top: 10px;">
+                    <p style="color: white; font-size: 20px; font-weight: bold; margin: 0;">게임 시작까지: <span id="countdownNumber">3</span></p>
+                </div>
+            </div>
             <div id="leaderboard">
                 <h3>순위표</h3>
                 <ol id="leaderboardList"></ol>

@@ -24,6 +24,16 @@ let playerColor = '#FF6B6B';
 let sessionKills = 0;
 let sessionFoodEaten = 0;
 let sessionStartTime = null;
+let roomId = null;
+
+// localStorage에서 roomId 불러오기
+function loadRoomId() {
+    const stored = localStorage.getItem('roomId');
+    if (stored) {
+        roomId = stored;
+        updateRoomDisplay();
+    }
+}
 
 // localStorage에서 userId 불러오기
 function loadUserId() {
@@ -128,6 +138,7 @@ function connectToServer() {
         gameStarted = data.gameStarted;
         console.log('Init - isHost:', isHost, 'gameStarted:', gameStarted, 'userId:', userId);
         updateUserIdDisplay();
+        updateRoomDisplay();
         // updateStartButton을 약간의 지연 후 호출하여 DOM이 준비되도록 함
         setTimeout(() => {
             updateStartButton();
@@ -138,6 +149,7 @@ function connectToServer() {
         gameStarted = true;
         console.log('Game started!', data);
         updateStartButton();
+        showCountdown();
         
         // Reset session stats
         sessionKills = 0;
@@ -158,6 +170,7 @@ function connectToServer() {
     socket.on('newHost', (data) => {
         isHost = data.hostId === playerId;
         updateStartButton();
+        updateHostStatus();
     });
     
     socket.on('needMorePlayers', () => {
@@ -206,6 +219,7 @@ function connectToServer() {
         console.log('Game reset');
         gameStarted = false;
         updateStartButton();
+        updateGameStatus();
     });
     
     let updateCount = 0;
@@ -304,6 +318,90 @@ function updateUserIdDisplay() {
     if (userIdElement && userId) {
         userIdElement.textContent = userId;
     }
+}
+
+// 방 정보 표시 업데이트
+function updateRoomDisplay() {
+    const roomIdElement = document.getElementById('roomId');
+    if (roomIdElement && roomId) {
+        roomIdElement.textContent = roomId;
+    }
+    
+    updateHostStatus();
+    updateGameStatus();
+}
+
+// 호스트 상태 업데이트
+function updateHostStatus() {
+    const hostStatusElement = document.getElementById('hostStatus');
+    if (hostStatusElement) {
+        if (isHost) {
+            hostStatusElement.textContent = '당신이 방장입니다';
+            hostStatusElement.style.color = '#4CAF50';
+        } else {
+            hostStatusElement.textContent = '플레이어';
+            hostStatusElement.style.color = '#FFD700';
+        }
+    }
+}
+
+// 게임 상태 업데이트
+function updateGameStatus() {
+    const gameStatusElement = document.getElementById('gameStatus');
+    const waitingMessage = document.getElementById('waitingMessage');
+    
+    if (gameStatusElement) {
+        if (gameStarted) {
+            gameStatusElement.textContent = '게임 진행 중';
+            gameStatusElement.style.color = '#4CAF50';
+        } else {
+            gameStatusElement.textContent = '대기 중';
+            gameStatusElement.style.color = '#FFA726';
+        }
+    }
+    
+    // 대기 메시지 표시/숨김
+    if (waitingMessage) {
+        if (!gameStarted && !isHost) {
+            waitingMessage.style.display = 'block';
+        } else {
+            waitingMessage.style.display = 'none';
+        }
+    }
+}
+
+// 카운트다운 표시
+function showCountdown() {
+    const countdownDisplay = document.getElementById('countdownDisplay');
+    const countdownNumber = document.getElementById('countdownNumber');
+    const waitingMessage = document.getElementById('waitingMessage');
+    
+    if (!countdownDisplay || !countdownNumber) return;
+    
+    // 대기 메시지 숨기기
+    if (waitingMessage) {
+        waitingMessage.style.display = 'none';
+    }
+    
+    let count = 3;
+    countdownDisplay.style.display = 'block';
+    countdownNumber.textContent = count;
+    
+    const countdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+            countdownNumber.textContent = count;
+            window.soundManager.playClick();
+        } else {
+            clearInterval(countdownInterval);
+            countdownDisplay.style.display = 'none';
+            
+            // 게임 시작 사운드
+            if (window.soundManager) {
+                window.soundManager.playClick();
+            }
+        }
+    }, 1000);
 }
 
 function updateUI() {
@@ -668,27 +766,42 @@ function handleMouseMove(e) {
 
 function updateStartButton() {
     const existingBtn = document.getElementById('startGameBtn');
+    const startButtonContainer = document.getElementById('startButtonContainer');
     
     console.log('updateStartButton - isHost:', isHost, 'gameStarted:', gameStarted);
     
     if (isHost && !gameStarted) {
         // Only create button if it doesn't exist
-        if (!existingBtn) {
+        if (!existingBtn && startButtonContainer) {
             const startBtn = document.createElement('button');
             startBtn.id = 'startGameBtn';
-            startBtn.textContent = '게임 시작';
+            startBtn.textContent = '🎮 게임 시작';
             startBtn.style.cssText = `
                 width: 100%;
-                padding: 10px;
+                padding: 15px;
                 background-color: #4CAF50;
                 color: white;
                 border: none;
                 border-radius: 5px;
                 cursor: pointer;
-                font-size: 16px;
-                transition: background-color 0.3s;
-                margin-top: 20px;
+                font-size: 18px;
+                font-weight: bold;
+                transition: all 0.3s;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             `;
+            
+            startBtn.addEventListener('mouseenter', () => {
+                startBtn.style.backgroundColor = '#45a049';
+                startBtn.style.transform = 'scale(1.05)';
+                startBtn.style.boxShadow = '0 6px 8px rgba(0, 0, 0, 0.2)';
+            });
+            
+            startBtn.addEventListener('mouseleave', () => {
+                startBtn.style.backgroundColor = '#4CAF50';
+                startBtn.style.transform = 'scale(1)';
+                startBtn.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            });
+            
             startBtn.addEventListener('click', () => {
                 console.log('Start button clicked!');
                 window.soundManager.playClick();
@@ -700,14 +813,8 @@ function updateStartButton() {
                 }
             });
             
-            // 순위표 아래에 추가
-            const leaderboard = document.getElementById('leaderboard');
-            if (leaderboard) {
-                leaderboard.insertAdjacentElement('afterend', startBtn);
-                console.log('Start button added to DOM');
-            } else {
-                console.error('Leaderboard element not found');
-            }
+            startButtonContainer.appendChild(startBtn);
+            console.log('Start button added to container');
         }
     } else {
         // Remove button if conditions are not met
@@ -715,6 +822,9 @@ function updateStartButton() {
             existingBtn.remove();
         }
     }
+    
+    // Update room display when button state changes
+    updateGameStatus();
 }
 
 // 터치 이벤트 지원 추가
@@ -834,6 +944,7 @@ document.body.appendChild(leaveRoomBtn);
 window.addEventListener('load', () => {
     // Load player preferences first
     loadPlayerPreferences();
+    loadRoomId();
     
     connectToServer();
     draw();
