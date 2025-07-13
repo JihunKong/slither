@@ -12,6 +12,33 @@
             <h1>스네이크 게임</h1>
             <div id="playerInfo">
                 <p>나의 ID: <span id="userId" style="color: #FFD700; font-weight: bold;">연결 중...</span></p>
+                <div style="margin: 10px 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>레벨 <span id="playerLevel" style="color: #667eea; font-weight: bold;">1</span></span>
+                        <span style="font-size: 12px; color: #888;">다음 레벨까지 <span id="xpNeeded">100</span> XP</span>
+                    </div>
+                    <div style="background: #333; height: 10px; border-radius: 5px; margin-top: 5px; overflow: hidden;">
+                        <div id="xpBar" style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+                    <span>닉네임:</span>
+                    <input type="text" id="playerName" placeholder="닉네임 입력" maxlength="12" style="flex: 1; padding: 5px; background: #444; color: white; border: 1px solid #666; border-radius: 3px;">
+                    <button id="updateNameBtn" style="padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 3px; cursor: pointer;">변경</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+                    <span>색상:</span>
+                    <div id="colorPicker" style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <div class="color-option" data-color="#FF6B6B" style="width: 25px; height: 25px; background: #FF6B6B; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#4ECDC4" style="width: 25px; height: 25px; background: #4ECDC4; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#45B7D1" style="width: 25px; height: 25px; background: #45B7D1; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#F7DC6F" style="width: 25px; height: 25px; background: #F7DC6F; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#B8E994" style="width: 25px; height: 25px; background: #B8E994; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#FD79A8" style="width: 25px; height: 25px; background: #FD79A8; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#A29BFE" style="width: 25px; height: 25px; background: #A29BFE; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                        <div class="color-option" data-color="#FFEAA7" style="width: 25px; height: 25px; background: #FFEAA7; border-radius: 3px; cursor: pointer; border: 2px solid transparent;"></div>
+                    </div>
+                </div>
                 <p>점수: <span id="score">0</span></p>
                 <p>플레이어: <span id="playerCount">0</span>/20</p>
             </div>
@@ -20,6 +47,40 @@
                 <ol id="leaderboardList"></ol>
             </div>
             <button id="respawnBtn" style="display: none;">다시 시작</button>
+            <div id="soundControls" style="margin-top: 20px; padding: 10px; background-color: #333; border-radius: 5px;">
+                <h3 style="margin-bottom: 10px; font-size: 16px;">사운드 설정</h3>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <button id="soundToggle" style="padding: 5px 10px; border-radius: 3px; border: none; cursor: pointer;">🔊</button>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="50" style="flex: 1;">
+                    <span id="volumeValue">50%</span>
+                </div>
+            </div>
+            <div id="mobileControls" style="margin-top: 15px; padding: 10px; background-color: #333; border-radius: 5px; display: none;">
+                <h3 style="margin-bottom: 10px; font-size: 16px;">모바일 컨트롤</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="radio" name="controlType" value="joystick" checked>
+                        <span>조이스틱</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="radio" name="controlType" value="swipe">
+                        <span>스와이프</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="radio" name="controlType" value="touch">
+                        <span>터치 따라가기</span>
+                    </label>
+                </div>
+            </div>
+            <button id="helpBtn" style="width: 100%; margin-top: 10px; padding: 10px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                ❓ 도움말 보기
+            </button>
+            <button id="statsBtn" style="width: 100%; margin-top: 10px; padding: 10px; background-color: #9C27B0; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                📊 통계 보기
+            </button>
+            <button id="achievementsBtn" style="width: 100%; margin-top: 10px; padding: 10px; background-color: #FF6B6B; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                🏆 업적 보기
+            </button>
         </div>
         <canvas id="gameCanvas"></canvas>
     </div>
@@ -32,7 +93,13 @@
     <div id="joystickContainer" class="joystick-container"></div>
     
     <script src="/socket.io/socket.io.js"></script>
+    <script src="js/sound.js"></script>
+    <script src="js/progression.js"></script>
+    <script src="js/achievements.js"></script>
+    <script src="js/powerups.js"></script>
+    <script src="js/tutorial.js"></script>
     <script src="js/joystick.js"></script>
+    <script src="js/swipe-controls.js"></script>
     <script src="js/game.js"></script>
 </body>
 </html>

@@ -238,6 +238,21 @@ body {
     background-color: #45a049;
 }
 
+/* Color picker styles */
+.color-option {
+    transition: all 0.2s ease;
+}
+
+.color-option:hover {
+    transform: scale(1.2);
+    box-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.color-option.selected {
+    border-color: white !important;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
 /* 모바일 전체화면 지원 */
 @media (orientation: landscape) and (max-width: 768px) {
     .info-panel {

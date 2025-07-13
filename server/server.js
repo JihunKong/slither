@@ -23,6 +23,8 @@ const MAX_PLAYERS = 20;
 const SNAKE_SPEED = 3.5; // 기본 속도 증가
 const FOOD_COUNT = 150; // 맵 확장에 맞춰 먹이 증가
 const ROOM_WAIT_TIME = 5000; // 5초 대기 후 게임 시작
+const POWERUP_SPAWN_INTERVAL = 20000; // 20초마다 파워업 스폰
+const MAX_POWERUPS = 5; // 최대 파워업 수
 
 // 사용자 ID 관리
 const userIdCounter = { value: 1000 };
@@ -46,12 +48,14 @@ function createGameState() {
     return {
         players: new Map(),
         food: [],
+        powerUps: [],
         roomHost: null,
         gameStarted: false,
         readyPlayers: new Set(),
         gameStartTime: null,
         winner: null,
-        winScore: 10000
+        winScore: 10000,
+        lastPowerUpSpawn: Date.now()
     };
 }
 
@@ -183,7 +187,9 @@ function createSnake(playerId) {
         displayScore: 0, // 보너스가 적용된 표시 점수
         alive: true,
         isBoosting: false, // 부스트 상태
-        boostEnergy: 100 // 부스트 에너지 (최대 100)
+        boostEnergy: 100, // 부스트 에너지 (최대 100)
+        invincible: true, // 무적 상태
+        invincibleUntil: Date.now() + 3000 // 3초간 무적
     };
 }
 
@@ -413,6 +419,8 @@ function resetSnake(snake) {
     snake.alive = true;
     snake.isBoosting = false;
     snake.boostEnergy = 100;
+    snake.invincible = true;
+    snake.invincibleUntil = Date.now() + 3000; // 3초간 무적
 }
 
 function checkSnakeCollisions() {
@@ -423,6 +431,14 @@ function checkSnakeCollisions() {
         const snake1 = players[i];
         if (!snake1.alive) continue;
         
+        // Check and update invincibility
+        if (snake1.invincible && Date.now() > snake1.invincibleUntil) {
+            snake1.invincible = false;
+        }
+        
+        // Skip collision check if invincible
+        if (snake1.invincible) continue;
+        
         const head1 = snake1.segments[0];
         
         for (let j = 0; j < players.length; j++) {
@@ -430,8 +446,8 @@ function checkSnakeCollisions() {
             if (!snake2.alive) continue;
             
             // 자기 자신과의 충돌 검사시 충분한 세그먼트 건너뛰기
-            const startIndex = i === j ? 6 : 0; // 처음 6개 세그먼트는 무조건 건너뛰기
-            const minDistance = i === j ? 9 : 10; // 자기 충돌 거리를 더 크게 (9 pixels)
+            const startIndex = i === j ? 8 : 0; // 처음 8개 세그먼트는 무조건 건너뛰기 (더 관대하게)
+            const minDistance = i === j ? 8 : 10; // 자기 충돌 거리를 더 줄임 (8 pixels)
             
             for (let k = startIndex; k < snake2.segments.length; k++) {
                 const segment = snake2.segments[k];
@@ -447,6 +463,12 @@ function checkSnakeCollisions() {
                         console.log(`  Snake length: ${snake1.segments.length}`);
                         snake1.alive = false;
                         dropSpecialFood(snake1);
+                        // Emit death event with killer info
+                        io.emit('playerKilled', { 
+                            killerId: null, 
+                            victimId: snake1.id,
+                            victimSize: snake1.segments.length
+                        });
                     } else {
                         // 다른 뱀과 충돌
                         collisions.push({ snake1: i, snake2: j });
@@ -478,18 +500,45 @@ function checkSnakeCollisions() {
             dropSpecialFood(snake2);
             resetSnake(snake1);
             resetSnake(snake2);
+            // Emit kill events
+            io.emit('playerKilled', { 
+                killerId: snake2.id, 
+                victimId: snake1.id,
+                victimSize: size1,
+                killerSize: size2
+            });
+            io.emit('playerKilled', { 
+                killerId: snake1.id, 
+                victimId: snake2.id,
+                victimSize: size2,
+                killerSize: size1
+            });
         } else if (size1 > size2) {
             // snake1이 더 큼
             dropSpecialFood(snake2);
             const reduction = Math.min(size2, snake1.segments.length - 3);
             snake1.segments.splice(-reduction); // 꼬리 부분 제거
             resetSnake(snake2);
+            // Emit kill event
+            io.emit('playerKilled', { 
+                killerId: snake1.id, 
+                victimId: snake2.id,
+                victimSize: size2,
+                killerSize: size1
+            });
         } else {
             // snake2가 더 큼
             dropSpecialFood(snake1);
             const reduction = Math.min(size1, snake2.segments.length - 3);
             snake2.segments.splice(-reduction); // 꼬리 부분 제거
             resetSnake(snake1);
+            // Emit kill event
+            io.emit('playerKilled', { 
+                killerId: snake2.id, 
+                victimId: snake1.id,
+                victimSize: size1,
+                killerSize: size2
+            });
         }
     });
 }
@@ -513,6 +562,7 @@ const gameLoopInterval = setInterval(() => {
                 if (snake.alive) {
                     updateSnakePosition(snake);
                     checkFoodCollision(snake);
+                    checkPowerUpCollisions(snake);
                     
                     // 승리 조건 검사
                     if (snake.displayScore >= gameState.winScore && !gameState.winner) {
@@ -525,7 +575,15 @@ const gameLoopInterval = setInterval(() => {
                         });
                         // 게임 리셋
                         setTimeout(() => {
-                            resetGame();
+                            // Reset game state
+                            gameState.players.forEach(player => {
+                                resetSnake(player);
+                            });
+                            gameState.winner = null;
+                            gameState.gameStarted = false;
+                            gameState.powerUps = [];
+                            gameState.lastPowerUpSpawn = Date.now();
+                            console.log('Game reset after victory');
                         }, 5000);
                     }
                 }
@@ -535,6 +593,12 @@ const gameLoopInterval = setInterval(() => {
             if (gameState.players.size > 0 && !gameState.winner) {
                 checkSnakeCollisions();
             }
+            
+            // Spawn power-ups periodically
+            if (Date.now() - gameState.lastPowerUpSpawn > POWERUP_SPAWN_INTERVAL) {
+                spawnPowerUp();
+                gameState.lastPowerUpSpawn = Date.now();
+            }
         }
         
         // 게임 상태 전송 (초당 20번으로 제한)
@@ -542,6 +606,7 @@ const gameLoopInterval = setInterval(() => {
             const gameData = {
                 players: Array.from(gameState.players.values()),
                 food: gameState.food,
+                powerUps: gameState.powerUps,
                 gameStarted: gameState.gameStarted,
                 roomHost: gameState.roomHost
             };
@@ -578,11 +643,82 @@ const gameLoopInterval = setInterval(() => {
 
 console.log('Game loop started successfully');
 
+// Power-up types definition
+const POWERUP_TYPES = [
+    'SPEED_BOOST',
+    'SHIELD',
+    'MAGNET',
+    'GHOST',
+    'MEGA_GROWTH',
+    'SCORE_MULTIPLIER',
+    'SHRINK',
+    'FREEZE_FIELD'
+];
+
+function spawnPowerUp() {
+    if (gameState.powerUps.length >= MAX_POWERUPS) return;
+    
+    const type = POWERUP_TYPES[Math.floor(Math.random() * POWERUP_TYPES.length)];
+    const powerUp = {
+        id: Date.now(),
+        type: type,
+        x: Math.random() * GAME_WIDTH,
+        y: Math.random() * GAME_HEIGHT,
+        size: 15
+    };
+    
+    gameState.powerUps.push(powerUp);
+    console.log(`Spawned power-up: ${type} at (${powerUp.x.toFixed(0)}, ${powerUp.y.toFixed(0)})`);
+}
+
+function checkPowerUpCollisions(snake) {
+    const head = snake.segments[0];
+    
+    for (let i = gameState.powerUps.length - 1; i >= 0; i--) {
+        const powerUp = gameState.powerUps[i];
+        const distance = Math.sqrt(Math.pow(head.x - powerUp.x, 2) + Math.pow(head.y - powerUp.y, 2));
+        
+        if (distance < 20) {
+            // Player collected power-up
+            gameState.powerUps.splice(i, 1);
+            
+            // Notify client
+            io.to(snake.id).emit('powerUpCollected', {
+                type: powerUp.type,
+                playerId: snake.id
+            });
+            
+            // Apply server-side effects for some power-ups
+            if (powerUp.type === 'MEGA_GROWTH') {
+                // Add 5 segments immediately
+                for (let j = 0; j < 5; j++) {
+                    const lastSegment = snake.segments[snake.segments.length - 1];
+                    const secondLastSegment = snake.segments[snake.segments.length - 2] || lastSegment;
+                    
+                    const dx = lastSegment.x - secondLastSegment.x;
+                    const dy = lastSegment.y - secondLastSegment.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    
+                    snake.segments.push({
+                        x: lastSegment.x + (dx / dist) * 2,
+                        y: lastSegment.y + (dy / dist) * 2
+                    });
+                }
+            }
+            
+            console.log(`${snake.name} collected ${powerUp.type}`);
+            return true;
+        }
+    }
+    return false;
+}
+
 // 즉시 첫 번째 게임 업데이트 전송
 setTimeout(() => {
     const gameData = {
         players: Array.from(gameState.players.values()),
-        food: gameState.food
+        food: gameState.food,
+        powerUps: gameState.powerUps
     };
     io.emit('gameUpdate', gameData);
 }, 100);
@@ -623,17 +759,18 @@ io.on('connection', (socket) => {
     
     // 새 방 만들기
     socket.on('createRoom', (data) => {
-        const { userId, isPublic } = data;
+        const { userId, isPublic, isSolo } = data;
         const roomId = generateRoomId();
         const room = createRoom(roomId, userId);
         room.isPublic = isPublic !== false;
+        room.isSolo = isSolo === true;
         
         // 방에 참가
         socket.join(roomId);
         socketToRoom.set(socket.id, roomId);
         
         socket.emit('roomCreated', { roomId, isHost: true });
-        console.log(`User ${userId} created room ${roomId}`);
+        console.log(`User ${userId} created ${room.isSolo ? 'solo' : 'multiplayer'} room ${roomId}`);
     });
     
     // 방 입장
@@ -690,12 +827,36 @@ io.on('connection', (socket) => {
     });
     
     socket.on('joinGame', (data) => {
-        const userId = data.userId || data; // Support both old and new format
+        // Support both old format (string) and new format (object)
+        let userId, name, color;
+        
+        if (typeof data === 'string') {
+            userId = data;
+            name = null;
+            color = null;
+        } else {
+            userId = data.userId;
+            name = data.name;
+            color = data.color;
+        }
+        
         if (!userId) return;
         
         const snake = createSnake(socket.id);
-        const userNumber = userId.replace('Player', '');
-        snake.name = `Player ${userNumber}`;
+        
+        // Set name
+        if (name && name.trim()) {
+            snake.name = name.trim();
+        } else {
+            const userNumber = userId.replace('Player', '');
+            snake.name = `Player ${userNumber}`;
+        }
+        
+        // Set color
+        if (color) {
+            snake.color = color;
+        }
+        
         snake.userId = userId;
         gameState.players.set(socket.id, snake);
     
@@ -703,6 +864,23 @@ io.on('connection', (socket) => {
     if (!gameState.roomHost) {
         gameState.roomHost = socket.id;
         console.log('Room host set to:', socket.id);
+        
+        // Check if this is a solo room
+        const room = getRoomBySocketId(socket.id);
+        if (room && room.isSolo) {
+            // Auto-start solo games after a short delay
+            setTimeout(() => {
+                if (socket.id === gameState.roomHost && !gameState.gameStarted && gameState.players.size === 1) {
+                    gameState.gameStarted = true;
+                    gameState.gameStartTime = Date.now();
+                    console.log('Solo game auto-started');
+                    io.emit('gameStarted', {
+                        startTime: gameState.gameStartTime,
+                        playerCount: gameState.players.size
+                    });
+                }
+            }, 1000);
+        }
     }
     
         socket.emit('init', {
@@ -752,10 +930,24 @@ io.on('connection', (socket) => {
         }
     });
     
+    socket.on('updatePlayerInfo', (data) => {
+        const player = gameState.players.get(socket.id);
+        if (player && data) {
+            if (data.name && data.name.trim()) {
+                player.name = data.name.trim();
+            }
+            if (data.color) {
+                player.color = data.color;
+            }
+            console.log(`Player ${socket.id} updated: name="${player.name}", color="${player.color}"`);
+        }
+    });
+    
     // 즉시 현재 게임 상태 전송
     socket.emit('gameUpdate', {
         players: Array.from(gameState.players.values()),
         food: gameState.food,
+        powerUps: gameState.powerUps,
         gameStarted: gameState.gameStarted,
         roomHost: gameState.roomHost
     });
@@ -765,6 +957,10 @@ io.on('connection', (socket) => {
         if (player && !player.alive) {
             const newSnake = createSnake(socket.id);
             newSnake.name = player.name;
+            newSnake.userId = player.userId; // Preserve userId
+            newSnake.color = player.color; // Preserve color
+            newSnake.invincible = true;
+            newSnake.invincibleUntil = Date.now() + 3000; // 3초간 무적
             gameState.players.set(socket.id, newSnake);
         }
     });

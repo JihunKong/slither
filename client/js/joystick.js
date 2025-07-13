@@ -167,15 +167,20 @@ class VirtualJoystick {
         this.angle = Math.atan2(deltaY, deltaX);
         this.distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), this.maxDistance);
         
-        // Update knob position
+        // Improved responsiveness with dead zone
+        const normalizedDistance = this.distance / this.maxDistance;
+        const deadZone = 0.1;
+        const adjustedDistance = normalizedDistance < deadZone ? 0 : (normalizedDistance - deadZone) / (1 - deadZone);
+        
+        // Update knob position with smooth animation
         const knobX = Math.cos(this.angle) * this.distance;
         const knobY = Math.sin(this.angle) * this.distance;
         
         this.knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
         
-        // Emit change event
-        if (this.onChange) {
-            this.onChange(this.angle, this.distance / this.maxDistance);
+        // Emit change event with adjusted distance
+        if (this.onChange && adjustedDistance > 0) {
+            this.onChange(this.angle, adjustedDistance);
         }
     }
     

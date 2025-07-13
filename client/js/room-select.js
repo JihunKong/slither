@@ -156,6 +156,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // 빠른 시작
     document.getElementById('quickPlayBtn').addEventListener('click', quickPlay);
     
+    // 솔로 플레이 버튼
+    document.getElementById('soloPlayBtn').addEventListener('click', () => {
+        if (!userId || !socket) return;
+        
+        // 비공개 방 생성 (솔로 플레이용)
+        socket.emit('createRoom', { userId, isPublic: false, isSolo: true });
+    });
+    
     // 방 목록 새로고침
     document.getElementById('refreshRoomsBtn').addEventListener('click', () => {
         if (socket) {

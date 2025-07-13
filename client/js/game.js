@@ -14,11 +14,16 @@ let gameHeight = 1800;
 let camera = { x: 0, y: 0 };
 let mouseX = 0;
 let mouseY = 0;
-let gameData = { players: [], food: [] };
+let gameData = { players: [], food: [], powerUps: [] };
 let myPlayer = null;
 let isHost = false;
 let gameStarted = false;
 let joystick = null;
+let playerName = '';
+let playerColor = '#FF6B6B';
+let sessionKills = 0;
+let sessionFoodEaten = 0;
+let sessionStartTime = null;
 
 // localStorage에서 userId 불러오기
 function loadUserId() {
@@ -34,6 +39,42 @@ function loadUserId() {
 function saveUserId(id) {
     localStorage.setItem('snakeGameUserId', id);
     console.log('Saved userId to localStorage:', id);
+}
+
+// Load player preferences
+function loadPlayerPreferences() {
+    const savedName = localStorage.getItem('snakePlayerName');
+    const savedColor = localStorage.getItem('snakePlayerColor');
+    
+    if (savedName) {
+        playerName = savedName;
+        document.getElementById('playerName').value = savedName;
+    }
+    
+    if (savedColor) {
+        playerColor = savedColor;
+        selectColor(savedColor);
+    }
+}
+
+// Save player preferences
+function savePlayerPreferences() {
+    if (playerName) {
+        localStorage.setItem('snakePlayerName', playerName);
+    }
+    if (playerColor) {
+        localStorage.setItem('snakePlayerColor', playerColor);
+    }
+}
+
+// Select color in UI
+function selectColor(color) {
+    document.querySelectorAll('.color-option').forEach(option => {
+        option.classList.remove('selected');
+        if (option.dataset.color === color) {
+            option.classList.add('selected');
+        }
+    });
 }
 
 canvas.width = 800;
@@ -66,7 +107,11 @@ function connectToServer() {
         updateUserIdDisplay();
         
         // userId를 받은 후 게임 참가
-        socket.emit('joinGame', userId);
+        socket.emit('joinGame', {
+            userId: userId,
+            name: playerName || userId,
+            color: playerColor
+        });
     });
     
     socket.on('connect_error', (error) => {
@@ -93,6 +138,21 @@ function connectToServer() {
         gameStarted = true;
         console.log('Game started!', data);
         updateStartButton();
+        
+        // Reset session stats
+        sessionKills = 0;
+        sessionFoodEaten = 0;
+        sessionStartTime = Date.now();
+        
+        // Start progression session
+        window.progressionManager.onGameStart();
+        
+        // Start tutorial for new players
+        if (!window.tutorialManager.tutorialCompleted) {
+            setTimeout(() => {
+                window.tutorialManager.start();
+            }, 1000);
+        }
     });
     
     socket.on('newHost', (data) => {
@@ -106,6 +166,14 @@ function connectToServer() {
     
     socket.on('gameWon', (data) => {
         console.log('Game won!', data);
+        window.soundManager.playVictory();
+        
+        // Update progression if we won
+        if (data.winnerId === playerId) {
+            const finalScore = myPlayer ? (myPlayer.displayScore || myPlayer.score) : 0;
+            window.progressionManager.onGameEnd(finalScore, true, sessionFoodEaten, sessionKills);
+        }
+        
         // 승리 메시지 표시
         const winMessage = document.createElement('div');
         winMessage.style.cssText = `
@@ -143,11 +211,34 @@ function connectToServer() {
     let updateCount = 0;
     let lastPosition = null;
     socket.on('gameUpdate', (data) => {
+        const prevPlayer = myPlayer;
         gameData = data;
         myPlayer = gameData.players.find(p => p.id === playerId);
         if (!myPlayer && playerId) {
             console.log('Player not found in game data. PlayerId:', playerId);
             console.log('Available players:', data.players.map(p => p.id));
+        }
+        
+        // Check for score changes (food eaten)
+        if (prevPlayer && myPlayer && myPlayer.score > prevPlayer.score) {
+            const scoreDiff = myPlayer.score - prevPlayer.score;
+            window.soundManager.playEat(scoreDiff);
+            sessionFoodEaten++; // Track food eaten
+        }
+        
+        // Check for death
+        if (prevPlayer && prevPlayer.alive && myPlayer && !myPlayer.alive) {
+            window.soundManager.playDeath();
+            
+            // End game session for progression
+            const finalScore = prevPlayer.displayScore || prevPlayer.score;
+            window.progressionManager.onGameEnd(finalScore, false, sessionFoodEaten, sessionKills);
+        }
+        
+        // Check for kills (other players dying)
+        if (prevPlayer && prevPlayer.alive && gameData.players.length < data.players.length) {
+            // Someone died, might be our kill
+            sessionKills++; // Simple approximation
         }
         
         // Only update button if game state or host status changed
@@ -183,6 +274,24 @@ function connectToServer() {
     
     socket.on('gameFull', () => {
         gameFullMessage.style.display = 'block';
+    });
+    
+    socket.on('playerKilled', (data) => {
+        // Check for achievements
+        if (data.killerId === playerId && data.killerSize && data.victimSize) {
+            // Check for giant slayer achievement
+            if (data.victimSize >= data.killerSize * 2) {
+                window.achievementManager.onGiantKill(data.killerSize, data.victimSize);
+            }
+            sessionKills++;
+        }
+    });
+    
+    socket.on('powerUpCollected', (data) => {
+        console.log('Power-up collected:', data);
+        if (data.playerId === playerId) {
+            window.powerUpManager.activatePowerUp(playerId, data.type);
+        }
     });
     
     socket.on('disconnect', (reason) => {
@@ -235,6 +344,17 @@ function updateUI() {
             </li>
         `)
         .join('');
+    
+    // Update progression UI
+    updateProgressionUI();
+}
+
+function updateProgressionUI() {
+    const stats = window.progressionManager.getStats();
+    
+    document.getElementById('playerLevel').textContent = stats.level;
+    document.getElementById('xpNeeded').textContent = stats.xpForNext;
+    document.getElementById('xpBar').style.width = (stats.progress * 100) + '%';
 }
 
 function updateCamera() {
@@ -311,9 +431,83 @@ function drawFood() {
     ctx.shadowBlur = 0;
 }
 
+function drawPowerUps() {
+    const powerUpTypes = window.powerUpManager.powerUpTypes;
+    
+    gameData.powerUps.forEach(powerUp => {
+        const x = powerUp.x - camera.x;
+        const y = powerUp.y - camera.y;
+        
+        if (x > -30 && x < canvas.width + 30 && y > -30 && y < canvas.height + 30) {
+            const type = powerUpTypes[powerUp.type];
+            if (!type) return;
+            
+            // Pulsing effect
+            const pulse = Math.sin(Date.now() * 0.003) * 0.2 + 1;
+            const size = (powerUp.size || 15) * pulse;
+            
+            // Background circle
+            ctx.save();
+            ctx.fillStyle = type.color + '33';
+            ctx.strokeStyle = type.color;
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = type.color;
+            
+            ctx.beginPath();
+            ctx.arc(x, y, size + 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Icon
+            ctx.shadowBlur = 0;
+            ctx.font = `${size * 1.5}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'white';
+            ctx.fillText(type.icon, x, y);
+            
+            ctx.restore();
+        }
+    });
+}
+
 function drawSnake(snake) {
+    // Get power-up effects for this snake
+    const effects = window.powerUpManager.getActiveEffects(snake.id);
+    
+    // Pre-draw effects
+    window.powerUpManager.drawEffects(ctx, snake, camera, effects);
+    
     if (!snake.alive) {
         ctx.globalAlpha = 0.5;
+    }
+    
+    // Ghost effect
+    if (effects.ghost) {
+        ctx.globalAlpha = 0.5;
+    }
+    
+    // Invincibility effect (from respawn or shield power-up)
+    if (snake.invincible || effects.invincible) {
+        // Flashing effect
+        const flash = Math.sin(Date.now() * 0.01) > 0;
+        ctx.globalAlpha = flash ? 0.5 : 0.8;
+        
+        // Shield effect
+        const head = snake.segments[0];
+        const shieldX = head.x - camera.x;
+        const shieldY = head.y - camera.y;
+        
+        ctx.save();
+        ctx.strokeStyle = '#00FFFF';
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00FFFF';
+        ctx.beginPath();
+        ctx.arc(shieldX, shieldY, 20, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
     }
     
     ctx.strokeStyle = snake.color;
@@ -347,6 +541,9 @@ function drawSnake(snake) {
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(snake.name, headX, headY - 15);
+    
+    // Draw power-up indicators
+    window.powerUpManager.drawPowerUpUI(ctx, snake, camera);
     
     ctx.globalAlpha = 1;
 }
@@ -415,6 +612,7 @@ function draw() {
     updateCamera();
     drawGrid();
     drawFood();
+    drawPowerUps();
     
     gameData.players.forEach(player => {
         drawSnake(player);
@@ -493,6 +691,7 @@ function updateStartButton() {
             `;
             startBtn.addEventListener('click', () => {
                 console.log('Start button clicked!');
+                window.soundManager.playClick();
                 if (socket && socket.connected) {
                     console.log('Emitting startGame event');
                     socket.emit('startGame');
@@ -559,6 +758,7 @@ function handleDoubleTap(e) {
         e.preventDefault();
         if (myPlayer && myPlayer.alive && socket && socket.connected) {
             socket.emit('boost', true);
+            window.soundManager.playBoost();
             setTimeout(() => {
                 if (socket && socket.connected) {
                     socket.emit('boost', false);
@@ -576,6 +776,7 @@ function handleKeyDown(e) {
         e.preventDefault();
         isBoosting = true;
         socket.emit('boost', true);
+        window.soundManager.playBoost();
     }
 }
 
@@ -597,6 +798,7 @@ document.addEventListener('keydown', handleKeyDown);
 document.addEventListener('keyup', handleKeyUp);
 
 respawnBtn.addEventListener('click', () => {
+    window.soundManager.playClick();
     if (socket && socket.connected) {
         socket.emit('respawn');
         respawnBtn.style.display = 'none';
@@ -630,8 +832,118 @@ document.body.appendChild(leaveRoomBtn);
 
 // 페이지 로드 완료 후 연결 시작
 window.addEventListener('load', () => {
+    // Load player preferences first
+    loadPlayerPreferences();
+    
     connectToServer();
     draw();
+    
+    // Initialize player customization
+    const updateNameBtn = document.getElementById('updateNameBtn');
+    const playerNameInput = document.getElementById('playerName');
+    
+    updateNameBtn.addEventListener('click', () => {
+        const newName = playerNameInput.value.trim();
+        if (newName && newName !== playerName) {
+            playerName = newName;
+            savePlayerPreferences();
+            window.soundManager.playClick();
+            
+            // Update server
+            if (socket && socket.connected) {
+                socket.emit('updatePlayerInfo', { name: playerName, color: playerColor });
+            }
+            
+            // Visual feedback
+            updateNameBtn.textContent = '✓';
+            updateNameBtn.style.backgroundColor = '#5cbf60';
+            setTimeout(() => {
+                updateNameBtn.textContent = '변경';
+                updateNameBtn.style.backgroundColor = '#4CAF50';
+            }, 1000);
+        }
+    });
+    
+    // Handle enter key
+    playerNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            updateNameBtn.click();
+        }
+    });
+    
+    // Color picker
+    document.querySelectorAll('.color-option').forEach(option => {
+        option.addEventListener('click', () => {
+            const newColor = option.dataset.color;
+            if (newColor !== playerColor) {
+                playerColor = newColor;
+                selectColor(newColor);
+                savePlayerPreferences();
+                window.soundManager.playClick();
+                
+                // Update server
+                if (socket && socket.connected) {
+                    socket.emit('updatePlayerInfo', { name: playerName, color: playerColor });
+                }
+            }
+        });
+    });
+    
+    // Initialize sound controls
+    const soundToggle = document.getElementById('soundToggle');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeValue = document.getElementById('volumeValue');
+    
+    // Set initial values
+    volumeSlider.value = window.soundManager.volume * 100;
+    volumeValue.textContent = Math.round(window.soundManager.volume * 100) + '%';
+    soundToggle.textContent = window.soundManager.enabled ? '🔊' : '🔇';
+    
+    // Sound toggle handler
+    soundToggle.addEventListener('click', () => {
+        window.soundManager.playClick();
+        const enabled = window.soundManager.toggle();
+        soundToggle.textContent = enabled ? '🔊' : '🔇';
+    });
+    
+    // Volume slider handler
+    volumeSlider.addEventListener('input', (e) => {
+        const value = e.target.value / 100;
+        window.soundManager.setVolume(value);
+        volumeValue.textContent = e.target.value + '%';
+    });
+    
+    volumeSlider.addEventListener('change', () => {
+        window.soundManager.playClick();
+    });
+    
+    // Help button handler
+    const helpBtn = document.getElementById('helpBtn');
+    if (helpBtn) {
+        helpBtn.addEventListener('click', () => {
+            window.soundManager.playClick();
+            window.tutorialManager.reset();
+            window.tutorialManager.start();
+        });
+    }
+    
+    // Stats button handler
+    const statsBtn = document.getElementById('statsBtn');
+    if (statsBtn) {
+        statsBtn.addEventListener('click', () => {
+            window.soundManager.playClick();
+            showStatsModal();
+        });
+    }
+    
+    // Achievements button handler
+    const achievementsBtn = document.getElementById('achievementsBtn');
+    if (achievementsBtn) {
+        achievementsBtn.addEventListener('click', () => {
+            window.soundManager.playClick();
+            showAchievementsModal();
+        });
+    }
     
     // 방 ID 표시
     const roomIdDisplay = document.createElement('div');
@@ -649,21 +961,78 @@ window.addEventListener('load', () => {
     roomIdDisplay.textContent = `방 코드: ${localStorage.getItem('roomId') || 'Unknown'}`;
     document.body.appendChild(roomIdDisplay);
     
-    // 가상 조이스틱 초기화
-    if (window.VirtualJoystick) {
-        joystick = new VirtualJoystick('joystickContainer');
+    // Mobile controls setup
+    const isMobile = window.innerWidth <= 768;
+    const mobileControlsDiv = document.getElementById('mobileControls');
+    
+    if (isMobile && mobileControlsDiv) {
+        mobileControlsDiv.style.display = 'block';
         
-        // 조이스틱 변경 이벤트
-        joystick.setOnChange((angle, distance) => {
-            if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted && distance > 0.1) {
-                socket.emit('updateDirection', angle);
-            }
-        });
+        // Get saved control type
+        const savedControlType = localStorage.getItem('snakeControlType') || 'joystick';
+        document.querySelector(`input[name="controlType"][value="${savedControlType}"]`).checked = true;
         
-        // 조이스틱 멈춤 이벤트
-        joystick.setOnStop(() => {
-            // 조이스틱을 놓을 때는 현재 방향 유지
+        // Setup initial control
+        setupMobileControl(savedControlType);
+        
+        // Handle control type change
+        document.querySelectorAll('input[name="controlType"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                window.soundManager.playClick();
+                const controlType = e.target.value;
+                localStorage.setItem('snakeControlType', controlType);
+                setupMobileControl(controlType);
+            });
         });
+    }
+    
+    function setupMobileControl(type) {
+        // Disable all controls first
+        if (joystick) {
+            joystick.hide();
+            joystick.setOnChange(null);
+        }
+        if (window.swipeControls) {
+            window.swipeControls.setEnabled(false);
+        }
+        
+        // Remove existing touch handlers
+        canvas.removeEventListener('touchmove', handleTouchMove);
+        canvas.removeEventListener('touchstart', handleTouchStart);
+        
+        // Setup selected control
+        switch(type) {
+            case 'joystick':
+                if (window.VirtualJoystick) {
+                    if (!joystick) {
+                        joystick = new VirtualJoystick('joystickContainer');
+                    }
+                    joystick.show();
+                    joystick.setOnChange((angle, distance) => {
+                        if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted && distance > 0.1) {
+                            socket.emit('updateDirection', angle);
+                        }
+                    });
+                }
+                break;
+                
+            case 'swipe':
+                if (window.swipeControls) {
+                    window.swipeControls.setEnabled(true);
+                    window.swipeControls.setOnChange((angle, distance) => {
+                        if (myPlayer && myPlayer.alive && socket && socket.connected && gameStarted) {
+                            socket.emit('updateDirection', angle);
+                        }
+                    });
+                }
+                break;
+                
+            case 'touch':
+                // Re-enable default touch handlers
+                canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+                canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+                break;
+        }
     }
     
     // 모바일 UI 컨트롤 추가
@@ -678,12 +1047,14 @@ window.addEventListener('load', () => {
         
         // 정보 패널 토글
         document.getElementById('toggleInfoBtn').addEventListener('click', () => {
+            window.soundManager.playClick();
             const infoPanel = document.querySelector('.info-panel');
             infoPanel.classList.toggle('show');
         });
         
         // 전체화면 토글
         document.getElementById('fullscreenBtn').addEventListener('click', () => {
+            window.soundManager.playClick();
             if (!document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(err => {
                     console.log('Fullscreen error:', err);
@@ -715,3 +1086,205 @@ window.debugStartGame = () => {
         socket.emit('startGame');
     }
 };
+
+// Stats modal function
+function showStatsModal() {
+    const stats = window.progressionManager.getStats();
+    
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: #2a2a2a;
+        border-radius: 10px;
+        padding: 30px;
+        max-width: 500px;
+        width: 90%;
+        color: white;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    `;
+    
+    content.innerHTML = `
+        <h2 style="text-align: center; margin-bottom: 20px; color: #667eea;">📊 게임 통계</h2>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div style="background: #333; padding: 15px; border-radius: 5px;">
+                <h3 style="color: #4ECDC4; margin-bottom: 10px;">레벨 & XP</h3>
+                <p>레벨: <strong>${stats.level}</strong></p>
+                <p>총 XP: <strong>${stats.xp.toLocaleString()}</strong></p>
+                <p>다음 레벨까지: <strong>${stats.xpForNext.toLocaleString()} XP</strong></p>
+            </div>
+            <div style="background: #333; padding: 15px; border-radius: 5px;">
+                <h3 style="color: #FF6B6B; margin-bottom: 10px;">게임 기록</h3>
+                <p>총 게임 수: <strong>${stats.totalGamesPlayed}</strong></p>
+                <p>승리: <strong>${stats.totalWins}</strong></p>
+                <p>승률: <strong>${stats.winRate}%</strong></p>
+            </div>
+            <div style="background: #333; padding: 15px; border-radius: 5px;">
+                <h3 style="color: #F7DC6F; margin-bottom: 10px;">점수 & 성과</h3>
+                <p>최고 점수: <strong>${stats.highScore.toLocaleString()}</strong></p>
+                <p>총 먹은 먹이: <strong>${stats.totalFoodEaten.toLocaleString()}</strong></p>
+            </div>
+            <div style="background: #333; padding: 15px; border-radius: 5px;">
+                <h3 style="color: #A29BFE; margin-bottom: 10px;">플레이 시간</h3>
+                <p>총 플레이: <strong>${stats.playTimeFormatted}</strong></p>
+            </div>
+        </div>
+        <button id="closeStatsBtn" style="
+            width: 100%;
+            margin-top: 20px;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        ">닫기</button>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close button
+    document.getElementById('closeStatsBtn').addEventListener('click', () => {
+        window.soundManager.playClick();
+        modal.remove();
+    });
+    
+    // Close on outside click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            window.soundManager.playClick();
+            modal.remove();
+        }
+    });
+}
+
+// Achievements modal function
+function showAchievementsModal() {
+    const achievements = window.achievementManager.getAllAchievements();
+    const progress = window.achievementManager.getProgress();
+    
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    `;
+    
+    const content = document.createElement('div');
+    content.style.cssText = `
+        background: #2a2a2a;
+        border-radius: 10px;
+        padding: 30px;
+        max-width: 700px;
+        width: 90%;
+        max-height: 80vh;
+        color: white;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        overflow-y: auto;
+    `;
+    
+    const achievementItems = achievements.map(achievement => {
+        const unlocked = achievement.unlocked;
+        return `
+            <div style="
+                background: ${unlocked ? '#333' : '#222'};
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 10px;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                opacity: ${unlocked ? '1' : '0.6'};
+                border: 2px solid ${unlocked ? '#4CAF50' : 'transparent'};
+            ">
+                <div style="font-size: 30px; filter: ${unlocked ? 'none' : 'grayscale(100%)'};">
+                    ${achievement.icon}
+                </div>
+                <div style="flex: 1;">
+                    <div style="font-weight: bold; color: ${unlocked ? '#4CAF50' : '#888'};">
+                        ${achievement.name}
+                    </div>
+                    <div style="font-size: 14px; opacity: 0.8; margin: 5px 0;">
+                        ${achievement.description}
+                    </div>
+                    <div style="font-size: 12px; color: #FFD700;">
+                        +${achievement.xp} XP
+                    </div>
+                </div>
+                ${unlocked ? '<div style="color: #4CAF50; font-size: 20px;">✓</div>' : ''}
+            </div>
+        `;
+    }).join('');
+    
+    content.innerHTML = `
+        <h2 style="text-align: center; margin-bottom: 20px; color: #FFD700;">🏆 업적</h2>
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="font-size: 24px; color: #4CAF50; margin-bottom: 5px;">
+                ${progress.unlocked} / ${progress.total}
+            </div>
+            <div style="background: #333; height: 20px; border-radius: 10px; overflow: hidden;">
+                <div style="
+                    background: linear-gradient(90deg, #4CAF50, #45B7D1);
+                    height: 100%;
+                    width: ${progress.percentage}%;
+                    transition: width 0.3s ease;
+                "></div>
+            </div>
+            <div style="margin-top: 5px; opacity: 0.8;">
+                ${progress.percentage}% 완료
+            </div>
+        </div>
+        <div style="max-height: 50vh; overflow-y: auto;">
+            ${achievementItems}
+        </div>
+        <button id="closeAchievementsBtn" style="
+            width: 100%;
+            margin-top: 20px;
+            padding: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        ">닫기</button>
+    `;
+    
+    modal.appendChild(content);
+    document.body.appendChild(modal);
+    
+    // Close button
+    document.getElementById('closeAchievementsBtn').addEventListener('click', () => {
+        window.soundManager.playClick();
+        modal.remove();
+    });
+    
+    // Close on outside click
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            window.soundManager.playClick();
+            modal.remove();
+        }
+    });
+}
