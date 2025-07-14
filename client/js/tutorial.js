@@ -85,8 +85,9 @@ class TutorialManager {
             width: 100%;
             height: 100%;
             background-color: rgba(0, 0, 0, 0.7);
-            z-index: 9998;
+            z-index: 8998;
             display: none;
+            pointer-events: none;
         `;
         
         // Create message box
@@ -103,10 +104,11 @@ class TutorialManager {
             padding: 30px;
             max-width: 500px;
             width: 90%;
-            z-index: 9999;
+            z-index: 8999;
             box-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
             text-align: center;
             color: white;
+            pointer-events: auto;
         `;
         
         document.body.appendChild(this.overlay);
@@ -135,10 +137,11 @@ class TutorialManager {
                 style.textContent = `
                     .tutorial-highlight {
                         position: relative;
-                        z-index: 10000 !important;
-                        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7),
-                                    0 0 20px rgba(255, 215, 0, 0.8) !important;
+                        z-index: 9000 !important;
+                        box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.8),
+                                    0 0 10px rgba(255, 215, 0, 0.6) !important;
                         border-radius: 5px;
+                        pointer-events: auto !important;
                     }
                 `;
                 style.id = 'tutorial-highlight-style';

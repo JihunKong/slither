@@ -145,12 +145,7 @@ function connectToServer() {
         setTimeout(() => {
             updateStartButton();
             
-            // Start tutorial for new players on first connection
-            if (!window.tutorialManager.tutorialCompleted) {
-                setTimeout(() => {
-                    window.tutorialManager.start();
-                }, 1000);
-            }
+            // 튜토리얼은 자동 시작하지 않음 - 도움말 버튼으로만 접근 가능
         }, 100);
     });
     
