@@ -402,9 +402,14 @@ class PowerUpManager {
         });
     }
     
-    // Draw power-up effects
+    // Draw power-up effects (성능 최적화)
     drawEffects(ctx, player, camera, effects) {
+        // 성능을 위해 화면 밖이면 렌더링 생략
         const head = player.segments[0];
+        if (!window.performanceManager.isInViewport(head.x, head.y, camera, 50)) {
+            return;
+        }
+        
         const x = head.x - camera.x;
         const y = head.y - camera.y;
         

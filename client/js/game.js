@@ -28,7 +28,10 @@ let roomId = null;
 let respawnCountdownInterval = null;
 let respawnCountdownElement = null;
 let lastFrameTime = 0;
-const targetFPS = 30;
+const targetFPS = 60; // Increase back to 60 FPS for smoother gameplay
+let frameCount = 0;
+let lastFPSTime = 0;
+let currentFPS = 0;
 
 // localStorage에서 roomId 불러오기
 function loadRoomId() {
@@ -630,7 +633,13 @@ function respawn() {
     }
 }
 
+let lastUIUpdate = 0;
 function updateUI() {
+    // UI 업데이트 빈도 제한 (성능 최적화)
+    const now = Date.now();
+    if (now - lastUIUpdate < 100) return; // 100ms마다만 업데이트
+    lastUIUpdate = now;
+    
     if (myPlayer) {
         // displayScore 표시 (보너스 적용된 점수)
         scoreElement.textContent = myPlayer.displayScore || myPlayer.score;
@@ -656,27 +665,35 @@ function updateUI() {
     
     playerCountElement.textContent = gameData.players.length;
     
-    const sortedPlayers = [...gameData.players]
-        .sort((a, b) => (b.displayScore || b.score) - (a.displayScore || a.score))
-        .slice(0, 5);
-    
-    // Update leaderboard with badge system
-    if (window.playerBadgeManager) {
-        window.playerBadgeManager.updateLeaderboardWithBadges(leaderboardList, sortedPlayers);
-    } else {
-        // Fallback to original leaderboard
-        leaderboardList.innerHTML = sortedPlayers
-            .map((player, index) => `
-                <li>
-                    <span>${index + 1}. ${player.name}</span>
-                    <span>${player.displayScore || player.score}</span>
-                </li>
-            `)
-            .join('');
+    // 리더보드 업데이트 빈도 제한
+    if (now - (window.lastLeaderboardUpdate || 0) > 500) { // 500ms마다만 업데이트
+        window.lastLeaderboardUpdate = now;
+        
+        const sortedPlayers = [...gameData.players]
+            .sort((a, b) => (b.displayScore || b.score) - (a.displayScore || a.score))
+            .slice(0, 5);
+        
+        // Update leaderboard with badge system
+        if (window.playerBadgeManager) {
+            window.playerBadgeManager.updateLeaderboardWithBadges(leaderboardList, sortedPlayers);
+        } else {
+            // Fallback to original leaderboard
+            leaderboardList.innerHTML = sortedPlayers
+                .map((player, index) => `
+                    <li>
+                        <span>${index + 1}. ${player.name}</span>
+                        <span>${player.displayScore || player.score}</span>
+                    </li>
+                `)
+                .join('');
+        }
     }
     
-    // Update progression UI
-    updateProgressionUI();
+    // Update progression UI (빈도 제한)
+    if (now - (window.lastProgressionUpdate || 0) > 1000) { // 1초마다만 업데이트
+        window.lastProgressionUpdate = now;
+        updateProgressionUI();
+    }
 }
 
 function updateProgressionUI() {
@@ -803,11 +820,20 @@ function drawPowerUps() {
 }
 
 function drawSnake(snake) {
-    // Get power-up effects for this snake
-    const effects = window.powerUpManager.getActiveEffects(snake.id);
+    // 성능 최적화: 화면 밖 플레이어는 간단하게 렌더링
+    const head = snake.segments[0];
+    const headX = head.x - camera.x;
+    const headY = head.y - camera.y;
+    const isOnScreen = headX >= -50 && headX <= canvas.width + 50 && 
+                      headY >= -50 && headY <= canvas.height + 50;
     
-    // Pre-draw effects
-    window.powerUpManager.drawEffects(ctx, snake, camera, effects);
+    // Get power-up effects for this snake (성능을 위해 필요한 경우만)
+    const effects = isOnScreen ? window.powerUpManager.getActiveEffects(snake.id) : {};
+    
+    // Pre-draw effects (화면에 있는 경우만)
+    if (isOnScreen) {
+        window.powerUpManager.drawEffects(ctx, snake, camera, effects);
+    }
     
     if (!snake.alive) {
         ctx.globalAlpha = 0.5;
@@ -818,24 +844,18 @@ function drawSnake(snake) {
         ctx.globalAlpha = 0.5;
     }
     
-    // Invincibility effect (from respawn or shield power-up)
-    if (snake.invincible || effects.invincible) {
-        // Flashing effect
-        const flash = Math.sin(Date.now() * 0.01) > 0;
+    // Invincibility effect (simplified for performance)
+    if (isOnScreen && (snake.invincible || effects.invincible)) {
+        // Simplified flashing effect
+        const flash = Math.floor(Date.now() / 200) % 2;
         ctx.globalAlpha = flash ? 0.5 : 0.8;
         
-        // Shield effect
-        const head = snake.segments[0];
-        const shieldX = head.x - camera.x;
-        const shieldY = head.y - camera.y;
-        
+        // Simplified shield effect
         ctx.save();
         ctx.strokeStyle = '#00FFFF';
-        ctx.lineWidth = 3;
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = '#00FFFF';
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.arc(shieldX, shieldY, 20, 0, Math.PI * 2);
+        ctx.arc(headX, headY, 20, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
     }
@@ -867,34 +887,40 @@ function drawSnake(snake) {
     ctx.arc(headX, headY, 7, 0, Math.PI * 2);
     ctx.fill();
     
-    // Draw player name with badge
-    ctx.fillStyle = 'white';
-    ctx.font = '12px Arial';
-    ctx.textAlign = 'center';
-    
-    if (window.playerBadgeManager) {
-        const level = window.playerBadgeManager.getPlayerLevel(snake);
-        const badge = window.playerBadgeManager.getBadgeForLevel(level);
-        
-        // Draw badge emoji above name
-        ctx.font = '10px Arial';
-        ctx.fillText(badge.emoji, headX, headY - 25);
-        
-        // Draw name
+    // Draw player name with badge (성능 최적화)
+    if (isOnScreen) {
+        ctx.fillStyle = 'white';
         ctx.font = '12px Arial';
-        ctx.fillText(snake.name, headX, headY - 15);
+        ctx.textAlign = 'center';
         
-        // Draw level
-        ctx.fillStyle = badge.color;
-        ctx.font = '9px Arial';
-        ctx.fillText(`Lv.${level}`, headX, headY - 5);
-    } else {
-        // Fallback to original name display
-        ctx.fillText(snake.name, headX, headY - 15);
+        if (window.playerBadgeManager) {
+            const level = window.playerBadgeManager.getPlayerLevel(snake);
+            const badge = window.playerBadgeManager.getBadgeForLevel(level);
+            
+            // Draw badge emoji above name (프레임 건너뛰기)
+            if (!window.animationOptimizer.shouldSkipFrame(3)) {
+                ctx.font = '10px Arial';
+                ctx.fillText(badge.emoji, headX, headY - 25);
+            }
+            
+            // Draw name
+            ctx.font = '12px Arial';
+            ctx.fillText(snake.name, headX, headY - 15);
+            
+            // Draw level
+            ctx.fillStyle = badge.color;
+            ctx.font = '9px Arial';
+            ctx.fillText(`Lv.${level}`, headX, headY - 5);
+        } else {
+            // Fallback to original name display
+            ctx.fillText(snake.name, headX, headY - 15);
+        }
+        
+        // Draw power-up indicators (프레임 건너뛰기로 최적화)
+        if (!window.animationOptimizer.shouldSkipFrame(2)) {
+            window.powerUpManager.drawPowerUpUI(ctx, snake, camera);
+        }
     }
-    
-    // Draw power-up indicators
-    window.powerUpManager.drawPowerUpUI(ctx, snake, camera);
     
     ctx.globalAlpha = 1;
 }
@@ -958,6 +984,10 @@ function drawBoostBar() {
 }
 
 function draw() {
+    // 성능 모니터링 시작
+    window.performanceManager.startFrame();
+    
+    // FPS 제한 제거 - 더 부드러운 렌더링을 위해
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     updateCamera();
@@ -965,17 +995,29 @@ function draw() {
     drawFood();
     drawPowerUps();
     
-    gameData.players.forEach(player => {
+    // 플레이어 렌더링 최적화 (frustum culling)
+    const playersToRender = gameData.players.filter(player => {
+        const head = player.segments[0];
+        return window.performanceManager.isInViewport(head.x, head.y, camera);
+    });
+    
+    playersToRender.forEach(player => {
         drawSnake(player);
     });
     
-    // 미니맵 그리기
-    if (gameData.players.length > 0) {
+    // 미니맵 그리기 (프레임 건너뛰기로 최적화)
+    if (gameData.players.length > 0 && !window.animationOptimizer.shouldSkipFrame(2)) {
         drawMinimap();
     }
     
     // 부스트 바 그리기
     drawBoostBar();
+    
+    // 성능 통계 표시
+    window.performanceManager.drawPerformanceStats(ctx);
+    
+    // 성능 모니터링 종료
+    window.performanceManager.endFrame();
     
     // 게임 상태 표시
     if (!gameStarted) {
@@ -1001,14 +1043,8 @@ function draw() {
         ctx.fillText('연결 중...', canvas.width / 2, canvas.height / 2);
     }
     
-    // FPS 제한 (30fps)
-    const now = Date.now();
-    if (now - lastFrameTime >= 1000 / targetFPS) {
-        lastFrameTime = now;
-        requestAnimationFrame(draw);
-    } else {
-        setTimeout(() => requestAnimationFrame(draw), 1);
-    }
+    // 부드러운 애니메이션을 위해 FPS 제한 제거
+    requestAnimationFrame(draw);
 }
 
 function handleMouseMove(e) {

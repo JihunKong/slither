@@ -327,6 +327,14 @@ class SkinRenderer {
     renderTrailEffect(ctx, snake, camera, trailData) {
         if (!snake.segments || snake.segments.length === 0) return;
         
+        // 성능 최적화: 트레일 렌더링 설정 확인
+        if (!window.showTrails) return;
+        
+        const head = snake.segments[0];
+        if (!window.performanceManager.isInViewport(head.x, head.y, camera, 100)) {
+            return;
+        }
+        
         const playerId = snake.id;
         
         switch (trailData.effect) {
@@ -343,7 +351,7 @@ class SkinRenderer {
     }
     
     renderSparkleTrail(ctx, snake, camera, playerId) {
-        // Add sparkle particles behind snake
+        // Add sparkle particles behind snake (성능 최적화)
         const head = snake.segments[0];
         
         if (!this.particleTrails.has(playerId)) {
@@ -352,8 +360,8 @@ class SkinRenderer {
         
         const particles = this.particleTrails.get(playerId);
         
-        // Add new particle
-        if (Math.random() < 0.3) {
+        // Add new particle (빈도 감소로 성능 향상)
+        if (Math.random() < 0.1) {
             particles.push({
                 x: head.x + (Math.random() - 0.5) * 10,
                 y: head.y + (Math.random() - 0.5) * 10,
@@ -384,9 +392,9 @@ class SkinRenderer {
         }
         ctx.restore();
         
-        // Clean up old particles
-        if (particles.length > 50) {
-            particles.splice(0, particles.length - 50);
+        // Clean up old particles (더 적극적으로 정리)
+        if (particles.length > 20) {
+            particles.splice(0, particles.length - 20);
         }
     }
     
@@ -400,7 +408,7 @@ class SkinRenderer {
         
         const particles = this.particleTrails.get(playerId);
         
-        if (Math.random() < 0.4) {
+        if (Math.random() < 0.15) {
             particles.push({
                 x: head.x + (Math.random() - 0.5) * 8,
                 y: head.y + (Math.random() - 0.5) * 8,
