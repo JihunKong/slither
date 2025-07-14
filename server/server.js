@@ -20,7 +20,7 @@ const HOST = '0.0.0.0';
 const GAME_WIDTH = 2400;
 const GAME_HEIGHT = 1800;
 const MAX_PLAYERS = 20;
-const SNAKE_SPEED = 3.5; // 기본 속도 증가
+const SNAKE_SPEED = 6.0; // 기본 속도 대폭 증가
 const FOOD_COUNT = 150; // 맵 확장에 맞춰 먹이 증가
 const ROOM_WAIT_TIME = 5000; // 5초 대기 후 게임 시작
 const POWERUP_SPAWN_INTERVAL = 20000; // 20초마다 파워업 스폰
@@ -235,13 +235,13 @@ function createSnake(playerId) {
 }
 
 function calculateSpeed(segmentCount) {
-    // 길이에 따른 속도 조정
-    if (segmentCount <= 10) return 3.5;
-    if (segmentCount <= 20) return 3.2;
-    if (segmentCount <= 30) return 2.9;
+    // 길이에 따른 속도 조정 (전체적으로 속도 증가)
+    if (segmentCount <= 10) return 6.0;
+    if (segmentCount <= 20) return 5.5;
+    if (segmentCount <= 30) return 5.0;
     // 30 이상일 때는 점진적으로 감소
-    const speed = 2.6 - (segmentCount - 30) * 0.01;
-    return Math.max(2.0, speed); // 최소 속도 2.0
+    const speed = 4.5 - (segmentCount - 30) * 0.015;
+    return Math.max(3.5, speed); // 최소 속도 3.5로 증가
 }
 
 function updateSnakePosition(snake) {
@@ -252,7 +252,7 @@ function updateSnakePosition(snake) {
     
     // 부스트 처리
     if (snake.isBoosting && snake.boostEnergy > 0) {
-        baseSpeed *= 1.5; // 부스트시 1.5배 속도
+        baseSpeed *= 1.8; // 부스트시 1.8배 속도로 증가
         snake.boostEnergy -= 2; // 에너지 소모
         
         // 부스트 중에는 세그먼트를 소모 (10프레임마다 1개)
@@ -679,7 +679,7 @@ const gameLoopInterval = setInterval(() => {
         console.error('Stack trace:', error.stack);
         console.error('Frame:', frameCount);
     }
-}, 1000 / 30); // 30 FPS for better performance
+}, 1000 / 60); // 60 FPS for smoother movement
 
 console.log('Game loop started successfully');
 
@@ -762,7 +762,7 @@ initializeFood();
 // 서버 시작 시 게임 상태 초기화
 gameState.gameStarted = false;
 gameState.roomHost = null;
-console.log('Server initialized, game loop running at 60 FPS');
+console.log('Server initialized, game loop running at 60 FPS with increased snake speed');
 
 io.on('connection', (socket) => {
     console.log('New player connected:', socket.id);

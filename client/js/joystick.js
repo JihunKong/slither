@@ -11,8 +11,8 @@ class VirtualJoystick {
         this.angle = 0;
         this.distance = 0;
         this.maxDistance = 60;
-        this.sensitivity = 1; // Default sensitivity
-        this.deadZone = 0.1; // Default dead zone
+        this.sensitivity = 1.5; // Increased default sensitivity
+        this.deadZone = 0.05; // Reduced default dead zone for better responsiveness
         
         this.loadSettings();
         this.createJoystick();

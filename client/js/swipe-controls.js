@@ -5,7 +5,7 @@ class SwipeControls {
         this.touchStartX = 0;
         this.touchStartY = 0;
         this.currentAngle = 0;
-        this.sensitivity = 2; // Adjustable sensitivity
+        this.sensitivity = 3; // Increased default sensitivity
         this.onChange = null;
         
         // Check if mobile

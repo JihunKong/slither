@@ -1536,9 +1536,9 @@ window.addEventListener('load', () => {
         const joystickDeadZoneSlider = document.getElementById('joystickDeadZone');
         const joystickDeadZoneValue = document.getElementById('joystickDeadZoneValue');
         
-        // Load saved values
-        const savedJoystickSensitivity = localStorage.getItem('joystickSensitivity') || '1';
-        const savedJoystickDeadZone = localStorage.getItem('joystickDeadZone') || '0.1';
+        // Load saved values with improved defaults
+        const savedJoystickSensitivity = localStorage.getItem('joystickSensitivity') || '1.5';
+        const savedJoystickDeadZone = localStorage.getItem('joystickDeadZone') || '0.05';
         
         if (joystickSensitivitySlider) {
             joystickSensitivitySlider.value = savedJoystickSensitivity;
@@ -1570,7 +1570,7 @@ window.addEventListener('load', () => {
         const swipeSensitivitySlider = document.getElementById('swipeSensitivity');
         const swipeSensitivityValue = document.getElementById('swipeSensitivityValue');
         
-        const savedSwipeSensitivity = localStorage.getItem('swipeSensitivity') || '2';
+        const savedSwipeSensitivity = localStorage.getItem('swipeSensitivity') || '3';
         
         if (swipeSensitivitySlider) {
             swipeSensitivitySlider.value = savedSwipeSensitivity;
