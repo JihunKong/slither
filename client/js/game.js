@@ -1086,8 +1086,16 @@ leaveRoomBtn.style.cssText = `
 `;
 leaveRoomBtn.addEventListener('click', () => {
     if (confirm('정말 방을 나가시겠습니까?')) {
+        // 서버에 연결 해제 신호
+        if (socket && socket.connected) {
+            socket.disconnect();
+        }
+        
+        // 로컬 스토리지 정리
         localStorage.removeItem('roomId');
-        window.location.href = '/index.html';
+        
+        // 명시적으로 루트로 이동 (index.html이 기본)
+        window.location.href = '/';
     }
 });
 document.body.appendChild(leaveRoomBtn);
