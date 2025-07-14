@@ -118,11 +118,36 @@ function getPublicRooms() {
                 id: roomId,
                 playerCount: room.gameState.players.size,
                 maxPlayers: room.maxPlayers,
-                gameStarted: room.gameState.gameStarted
+                gameStarted: room.gameState.gameStarted,
+                createdAt: room.createdAt
             });
         }
     });
-    return publicRooms;
+    return publicRooms.sort((a, b) => b.createdAt - a.createdAt); // 최신순 정렬
+}
+
+// 모든 클라이언트에게 방 목록 브로드캐스트
+function broadcastRoomList() {
+    const roomList = getPublicRooms();
+    io.emit('roomList', roomList);
+    console.log('Broadcasting room list update:', roomList.length, 'rooms');
+}
+
+// 빈 방 정리 함수
+function cleanupEmptyRooms() {
+    let cleanedCount = 0;
+    rooms.forEach((room, roomId) => {
+        if (room.gameState.players.size === 0) {
+            console.log('Cleaning up empty room:', roomId);
+            rooms.delete(roomId);
+            cleanedCount++;
+        }
+    });
+    
+    if (cleanedCount > 0) {
+        console.log(`Cleaned up ${cleanedCount} empty rooms`);
+        broadcastRoomList();
+    }
 }
 
 function initializeFood() {
@@ -778,6 +803,11 @@ io.on('connection', (socket) => {
         
         socket.emit('roomCreated', { roomId, isHost: true });
         console.log(`User ${userId} created ${room.isSolo ? 'solo' : 'multiplayer'} room ${roomId}`);
+        
+        // 방 목록 업데이트 브로드캐스트 (솔로 방이 아닌 경우)
+        if (!room.isSolo) {
+            broadcastRoomList();
+        }
     });
     
     // 방 입장
@@ -801,6 +831,9 @@ io.on('connection', (socket) => {
         
         socket.emit('roomJoined', { roomId, isHost: room.hostUserId === userId });
         console.log(`User ${userId} joined room ${roomId}`);
+        
+        // 방 목록 업데이트 브로드캐스트
+        broadcastRoomList();
     });
     
     // 빠른 시작 (자동 매칭)
@@ -823,6 +856,9 @@ io.on('connection', (socket) => {
             socket.join(foundRoom.id);
             socketToRoom.set(socket.id, foundRoom.id);
             socket.emit('roomJoined', { roomId: foundRoom.id, isHost: false });
+            
+            // 방 목록 업데이트 브로드캐스트
+            broadcastRoomList();
         } else {
             // 새 방 생성
             const roomId = generateRoomId();
@@ -830,6 +866,9 @@ io.on('connection', (socket) => {
             socket.join(roomId);
             socketToRoom.set(socket.id, roomId);
             socket.emit('roomCreated', { roomId, isHost: true });
+            
+            // 방 목록 업데이트 브로드캐스트
+            broadcastRoomList();
         }
     });
     
@@ -974,7 +1013,8 @@ io.on('connection', (socket) => {
     
     socket.on('disconnect', () => {
         const userId = socketToUserId.get(socket.id);
-        console.log('Player disconnected:', socket.id, 'userId:', userId);
+        const roomId = socketToRoom.get(socket.id);
+        console.log('Player disconnected:', socket.id, 'userId:', userId, 'roomId:', roomId);
         
         // 매핑 정리
         if (userId) {
@@ -982,6 +1022,40 @@ io.on('connection', (socket) => {
             userIdToSocket.delete(userId);
         }
         
+        if (roomId) {
+            socketToRoom.delete(socket.id);
+        }
+        
+        // 방별로 플레이어 제거 처리
+        if (roomId && rooms.has(roomId)) {
+            const room = rooms.get(roomId);
+            room.gameState.players.delete(socket.id);
+            
+            // 방장이 나갔으면 새로운 방장 지정
+            if (socket.id === room.gameState.roomHost && room.gameState.players.size > 0) {
+                room.gameState.roomHost = room.gameState.players.keys().next().value;
+                console.log('New room host for', roomId, ':', room.gameState.roomHost);
+                
+                // 해당 방의 플레이어들에게만 새 방장 알림
+                room.gameState.players.forEach((player, playerId) => {
+                    const playerSocket = io.sockets.sockets.get(playerId);
+                    if (playerSocket) {
+                        playerSocket.emit('newHost', { hostId: room.gameState.roomHost });
+                    }
+                });
+            }
+            
+            // 방이 비었으면 방 삭제
+            if (room.gameState.players.size === 0) {
+                console.log('Deleting empty room:', roomId);
+                rooms.delete(roomId);
+                
+                // 모든 클라이언트에게 방 목록 업데이트 알림
+                broadcastRoomList();
+            }
+        }
+        
+        // 기존 gameState도 정리 (호환성을 위해)
         gameState.players.delete(socket.id);
         
         // 방장이 나갔으면 새로운 방장 지정
@@ -1007,4 +1081,8 @@ server.listen(PORT, HOST, () => {
     console.log(`- Game size: ${GAME_WIDTH}x${GAME_HEIGHT}`);
     console.log(`- Max players: ${MAX_PLAYERS}`);
     console.log(`- Food count: ${FOOD_COUNT}`);
+    
+    // 5분마다 빈 방 정리
+    setInterval(cleanupEmptyRooms, 5 * 60 * 1000);
+    console.log('Empty room cleanup scheduler started (5 minute intervals)');
 });
