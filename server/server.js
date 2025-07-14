@@ -126,11 +126,21 @@ function getPublicRooms() {
     return publicRooms.sort((a, b) => b.createdAt - a.createdAt); // 최신순 정렬
 }
 
-// 모든 클라이언트에게 방 목록 브로드캐스트
+// 모든 클라이언트에게 방 목록 브로드캐스트 (딜레이로 최적화)
+let broadcastTimeout = null;
 function broadcastRoomList() {
-    const roomList = getPublicRooms();
-    io.emit('roomList', roomList);
-    console.log('Broadcasting room list update:', roomList.length, 'rooms');
+    // 기존 타임아웃이 있으면 취소
+    if (broadcastTimeout) {
+        clearTimeout(broadcastTimeout);
+    }
+    
+    // 500ms 후에 브로드캐스트 (연속 호출 방지)
+    broadcastTimeout = setTimeout(() => {
+        const roomList = getPublicRooms();
+        io.emit('roomList', roomList);
+        console.log('Broadcasting room list update:', roomList.length, 'rooms');
+        broadcastTimeout = null;
+    }, 500);
 }
 
 // 빈 방 정리 함수
@@ -633,8 +643,8 @@ const gameLoopInterval = setInterval(() => {
             }
         }
         
-        // 게임 상태 전송 (초당 20번으로 제한)
-        if (frameCount - lastBroadcast >= 3) { // 60fps / 3 = 20 updates per second
+        // 게임 상태 전송 (초당 15번으로 제한)
+        if (frameCount - lastBroadcast >= 2) { // 30fps / 2 = 15 updates per second
             const gameData = {
                 players: Array.from(gameState.players.values()),
                 food: gameState.food,
@@ -643,8 +653,8 @@ const gameLoopInterval = setInterval(() => {
                 roomHost: gameState.roomHost
             };
             
-            // 디버깅: emit 전에 확인
-            if (frameCount % 60 === 0 && io.engine.clientsCount > 0) {
+            // 디버깅: emit 전에 확인 (5초마다만)
+            if (frameCount % 150 === 0 && io.engine.clientsCount > 0) {
                 console.log(`[EMIT] Sending gameUpdate to ${io.engine.clientsCount} clients`);
             }
             
@@ -652,18 +662,9 @@ const gameLoopInterval = setInterval(() => {
             lastBroadcast = frameCount;
         }
         
-        // 디버깅 로그 (1초마다)
-        if (frameCount % 60 === 0) {
+        // 디버깅 로그 (10초마다만)
+        if (frameCount % 300 === 0) {
             console.log(`Frame ${frameCount}: ${gameState.players.size} players, ${io.engine.clientsCount} clients connected`);
-            if (gameState.players.size > 0) {
-                const firstPlayer = Array.from(gameState.players.values())[0];
-                console.log(`  Player at (${firstPlayer.segments[0].x.toFixed(1)}, ${firstPlayer.segments[0].y.toFixed(1)}), dir=${firstPlayer.direction.toFixed(2)}, speed=${firstPlayer.speed}`);
-                console.log(`  Debug ID: ${firstPlayer._debug_id}`);
-                // 처음 3개 세그먼트 위치 확인
-                if (frameCount % 300 === 0) {
-                    console.log(`  Segments: ${firstPlayer.segments.slice(0, 3).map(s => `(${s.x.toFixed(1)},${s.y.toFixed(1)})`).join(' -> ')}`);
-                }
-            }
         }
     } catch (error) {
         console.error('!!! GAME LOOP ERROR !!!');
@@ -671,7 +672,7 @@ const gameLoopInterval = setInterval(() => {
         console.error('Stack trace:', error.stack);
         console.error('Frame:', frameCount);
     }
-}, 1000 / 60); // 60 FPS
+}, 1000 / 30); // 30 FPS for better performance
 
 console.log('Game loop started successfully');
 
@@ -714,11 +715,14 @@ function checkPowerUpCollisions(snake) {
             // Player collected power-up
             gameState.powerUps.splice(i, 1);
             
-            // Notify client
-            io.to(snake.id).emit('powerUpCollected', {
-                type: powerUp.type,
-                playerId: snake.id
-            });
+            // Notify client - snake.id는 socket.id와 같음
+            const playerSocket = io.sockets.sockets.get(snake.id);
+            if (playerSocket) {
+                playerSocket.emit('powerUpCollected', {
+                    type: powerUp.type,
+                    playerId: snake.id
+                });
+            }
             
             // Apply server-side effects for some power-ups
             if (powerUp.type === 'MEGA_GROWTH') {
@@ -745,15 +749,7 @@ function checkPowerUpCollisions(snake) {
     return false;
 }
 
-// 즉시 첫 번째 게임 업데이트 전송
-setTimeout(() => {
-    const gameData = {
-        players: Array.from(gameState.players.values()),
-        food: gameState.food,
-        powerUps: gameState.powerUps
-    };
-    io.emit('gameUpdate', gameData);
-}, 100);
+// 불필요한 즉시 업데이트 제거 - 메인 게임 루프에서 처리
 
 initializeFood();
 // 서버 시작 시 게임 상태 초기화

@@ -27,6 +27,8 @@ let sessionStartTime = null;
 let roomId = null;
 let respawnCountdownInterval = null;
 let respawnCountdownElement = null;
+let lastFrameTime = 0;
+const targetFPS = 30;
 
 // localStorage에서 roomId 불러오기
 function loadRoomId() {
@@ -899,7 +901,14 @@ function draw() {
         ctx.fillText('연결 중...', canvas.width / 2, canvas.height / 2);
     }
     
-    requestAnimationFrame(draw);
+    // FPS 제한 (30fps)
+    const now = Date.now();
+    if (now - lastFrameTime >= 1000 / targetFPS) {
+        lastFrameTime = now;
+        requestAnimationFrame(draw);
+    } else {
+        setTimeout(() => requestAnimationFrame(draw), 1);
+    }
 }
 
 function handleMouseMove(e) {
