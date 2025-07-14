@@ -1087,7 +1087,7 @@ leaveRoomBtn.style.cssText = `
 leaveRoomBtn.addEventListener('click', () => {
     if (confirm('정말 방을 나가시겠습니까?')) {
         localStorage.removeItem('roomId');
-        window.location.href = '/room-select.html';
+        window.location.href = '/index.html';
     }
 });
 document.body.appendChild(leaveRoomBtn);

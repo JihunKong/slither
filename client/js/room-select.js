@@ -65,14 +65,14 @@ function connectToServer() {
         console.log('Room created:', data);
         // 방이 생성되면 게임 페이지로 이동
         localStorage.setItem('roomId', data.roomId);
-        window.location.href = '/index.html';
+        window.location.href = '/game.html';
     });
     
     socket.on('roomJoined', (data) => {
         console.log('Joined room:', data);
         // 방에 입장하면 게임 페이지로 이동
         localStorage.setItem('roomId', data.roomId);
-        window.location.href = '/index.html';
+        window.location.href = '/game.html';
     });
     
     socket.on('roomError', (error) => {

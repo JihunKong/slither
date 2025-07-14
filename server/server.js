@@ -38,10 +38,8 @@ const socketToRoom = new Map(); // socket.id -> roomId 매핑
 
 app.use(express.static(path.join(__dirname, '../client')));
 
-// 루트 경로를 room-select.html로 리다이렉트
-app.get('/', (req, res) => {
-    res.redirect('/room-select.html');
-});
+// 루트 경로는 이제 index.html (방 선택 페이지)가 됨
+// 별도 리다이렉트 불필요
 
 // 기본 게임 상태 구조 (각 방마다 복사됨)
 function createGameState() {
