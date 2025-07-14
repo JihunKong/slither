@@ -11,7 +11,14 @@
         <div class="info-panel">
             <h1>스네이크 게임</h1>
             <div id="playerInfo">
-                <p>나의 ID: <span id="userId" style="color: #FFD700; font-weight: bold;">연결 중...</span></p>
+                <div style="margin: 10px 0; text-align: center;">
+                    <p style="margin: 5px 0;">현재 ID: <span id="userId" style="color: #FFD700; font-weight: bold;">연결 중...</span></p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+                    <span>ID 변경:</span>
+                    <input type="text" id="userIdInput" placeholder="새 사용자 ID" maxlength="15" style="flex: 1; padding: 5px; background: #444; color: #FFD700; border: 1px solid #666; border-radius: 3px; font-weight: bold;">
+                    <button id="updateUserIdBtn" style="padding: 5px 10px; background: #FF6B6B; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">변경</button>
+                </div>
                 <div style="margin: 10px 0;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span>레벨 <span id="playerLevel" style="color: #667eea; font-weight: bold;">1</span></span>
@@ -88,6 +95,33 @@
                         <span>터치 따라가기</span>
                     </label>
                 </div>
+                
+                <!-- 조이스틱 설정 -->
+                <div id="joystickSettings" style="margin-top: 15px; padding: 10px; background-color: #2a2a2a; border-radius: 5px;">
+                    <h4 style="margin-bottom: 10px; font-size: 14px; color: #ccc;">조이스틱 설정</h4>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 12px; color: #aaa; min-width: 60px;">감도:</span>
+                            <input type="range" id="joystickSensitivity" min="0.5" max="3" step="0.1" value="1" style="flex: 1;">
+                            <span id="joystickSensitivityValue" style="font-size: 12px; color: #ccc; min-width: 30px;">1.0</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 12px; color: #aaa; min-width: 60px;">데드존:</span>
+                            <input type="range" id="joystickDeadZone" min="0" max="0.3" step="0.05" value="0.1" style="flex: 1;">
+                            <span id="joystickDeadZoneValue" style="font-size: 12px; color: #ccc; min-width: 30px;">0.1</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 스와이프 설정 -->
+                <div id="swipeSettings" style="margin-top: 10px; padding: 10px; background-color: #2a2a2a; border-radius: 5px; display: none;">
+                    <h4 style="margin-bottom: 10px; font-size: 14px; color: #ccc;">스와이프 설정</h4>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 12px; color: #aaa; min-width: 60px;">감도:</span>
+                        <input type="range" id="swipeSensitivity" min="0.5" max="5" step="0.1" value="2" style="flex: 1;">
+                        <span id="swipeSensitivityValue" style="font-size: 12px; color: #ccc; min-width: 30px;">2.0</span>
+                    </div>
+                </div>
             </div>
             <button id="helpBtn" style="width: 100%; margin-top: 10px; padding: 10px; background-color: #2196F3; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
                 ❓ 도움말 보기
@@ -114,6 +148,9 @@
     <script src="js/progression.js"></script>
     <script src="js/achievements.js"></script>
     <script src="js/powerups.js"></script>
+    <script src="js/skins.js"></script>
+    <script src="js/skin-renderer.js"></script>
+    <script src="js/player-badges.js"></script>
     <script src="js/tutorial.js"></script>
     <script src="js/joystick.js"></script>
     <script src="js/swipe-controls.js"></script>

@@ -112,6 +112,11 @@ class ProgressionManager {
         // Check if leveled up
         if (this.level > prevLevel) {
             this.onLevelUp(prevLevel, this.level);
+            
+            // Update user ID display with new badge
+            if (window.updateUserIdDisplay) {
+                window.updateUserIdDisplay();
+            }
         }
     }
     

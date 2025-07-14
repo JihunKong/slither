@@ -82,6 +82,13 @@ function generateRoomId() {
     return `Room-${roomIdCounter.value++}`;
 }
 
+// 사용자 ID 형식 검증
+function validateUserIdFormat(id) {
+    // 3-15 characters, alphanumeric and hyphens only, must start and end with letter or number
+    const regex = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,13}[a-zA-Z0-9]$|^[a-zA-Z0-9]{3,15}$/;
+    return regex.test(id) && !id.includes('--'); // No consecutive hyphens
+}
+
 // 새 방 생성
 function createRoom(roomId, hostUserId) {
     const room = {
@@ -1022,6 +1029,62 @@ io.on('connection', (socket) => {
             }
             console.log(`Player ${socket.id} updated: name="${player.name}", color="${player.color}"`);
         }
+    });
+    
+    socket.on('requestUserIdChange', (data) => {
+        const { oldUserId, newUserId } = data;
+        
+        // Validate new user ID format
+        if (!validateUserIdFormat(newUserId)) {
+            socket.emit('userIdChangeError', { 
+                message: '잘못된 사용자 ID 형식입니다. 3-15자의 영문, 숫자, 하이픈만 사용 가능합니다.' 
+            });
+            return;
+        }
+        
+        // Check if the new userId is already taken by another socket
+        let isIdTaken = false;
+        for (const [socketId, userId] of socketToUserId.entries()) {
+            if (userId === newUserId && socketId !== socket.id) {
+                isIdTaken = true;
+                break;
+            }
+        }
+        
+        if (isIdTaken) {
+            socket.emit('userIdChangeError', { 
+                message: '이미 사용 중인 사용자 ID입니다.' 
+            });
+            return;
+        }
+        
+        // Update mappings
+        if (oldUserId) {
+            userIdToSocket.delete(oldUserId);
+        }
+        socketToUserId.set(socket.id, newUserId);
+        userIdToSocket.set(newUserId, socket.id);
+        
+        // Update player data in all relevant game states
+        const roomId = socketToRoom.get(socket.id);
+        let targetGameState = gameState; // 기본값
+        
+        if (roomId && rooms.has(roomId)) {
+            const room = rooms.get(roomId);
+            targetGameState = room.gameState;
+        }
+        
+        const player = targetGameState.players.get(socket.id);
+        if (player) {
+            player.userId = newUserId;
+            player.name = newUserId; // Update name to match new ID if no custom name
+        }
+        
+        console.log(`User ID changed: ${oldUserId} -> ${newUserId} for socket ${socket.id}`);
+        
+        socket.emit('userIdChangeSuccess', { 
+            newUserId: newUserId 
+        });
     });
     
     // 즉시 현재 게임 상태 전송

@@ -95,6 +95,63 @@ class PowerUpManager {
                     freezeSlowdown: 0.5
                 },
                 description: '5초간 주변 적 속도 50% 감소'
+            },
+            TELEPORT: {
+                id: 'TELEPORT',
+                name: '순간이동',
+                icon: '🌀',
+                color: '#9B59B6',
+                duration: 0, // instant
+                effect: {
+                    teleport: true
+                },
+                description: '무작위 안전한 위치로 순간이동'
+            },
+            XRAY_VISION: {
+                id: 'XRAY_VISION',
+                name: '투시',
+                icon: '👁️',
+                color: '#34495E',
+                duration: 15000, // 15 seconds
+                effect: {
+                    xrayVision: true
+                },
+                description: '15초간 다른 뱀과 장애물을 투시'
+            },
+            TIME_SLOW: {
+                id: 'TIME_SLOW',
+                name: '시간 정지',
+                icon: '⏰',
+                color: '#8E44AD',
+                duration: 8000, // 8 seconds
+                effect: {
+                    timeSlow: true,
+                    slowFactor: 0.3
+                },
+                description: '8초간 다른 플레이어 시간 70% 감소'
+            },
+            CLONE: {
+                id: 'CLONE',
+                name: '분신술',
+                icon: '👥',
+                color: '#16A085',
+                duration: 12000, // 12 seconds
+                effect: {
+                    hasClone: true
+                },
+                description: '12초간 분신 생성 (적 혼란 유발)'
+            },
+            TREASURE_DETECTOR: {
+                id: 'TREASURE_DETECTOR',
+                name: '보물 탐지',
+                icon: '🔍',
+                color: '#F39C12',
+                duration: 25000, // 25 seconds
+                effect: {
+                    treasureDetector: true,
+                    detectionRadius: 150
+                },
+                description: '25초간 주변 먹이와 파워업 위치 표시'
             }
         };
     }
@@ -137,6 +194,8 @@ class PowerUpManager {
         // Handle instant effects
         if (powerUpId === 'MEGA_GROWTH') {
             this.applyInstantGrowth(playerId, powerUp.effect.instantGrowth);
+        } else if (powerUpId === 'TELEPORT') {
+            this.applyInstantTeleport(playerId);
         }
         
         // Schedule removal if duration-based
@@ -185,7 +244,14 @@ class PowerUpManager {
             scoreMultiplier: 1,
             sizeMultiplier: 1,
             freezeRadius: 0,
-            freezeSlowdown: 1
+            freezeSlowdown: 1,
+            teleport: false,
+            xrayVision: false,
+            timeSlow: false,
+            slowFactor: 1,
+            hasClone: false,
+            treasureDetector: false,
+            detectionRadius: 0
         };
         
         // Combine all active effects
@@ -193,11 +259,12 @@ class PowerUpManager {
             Object.keys(powerUp.effect).forEach(key => {
                 if (key === 'speedMultiplier' || key === 'scoreMultiplier' || key === 'sizeMultiplier') {
                     effects[key] *= powerUp.effect[key];
-                } else if (key === 'invincible' || key === 'ghost') {
+                } else if (key === 'invincible' || key === 'ghost' || key === 'teleport' || key === 'xrayVision' || 
+                          key === 'timeSlow' || key === 'hasClone' || key === 'treasureDetector') {
                     effects[key] = effects[key] || powerUp.effect[key];
-                } else if (key === 'magnetRange' || key === 'freezeRadius') {
+                } else if (key === 'magnetRange' || key === 'freezeRadius' || key === 'detectionRadius') {
                     effects[key] = Math.max(effects[key], powerUp.effect[key]);
-                } else if (key === 'freezeSlowdown') {
+                } else if (key === 'freezeSlowdown' || key === 'slowFactor') {
                     effects[key] = Math.min(effects[key], powerUp.effect[key]);
                 }
             });
@@ -290,6 +357,13 @@ class PowerUpManager {
         // This would need to be handled by the game logic
         if (window.socket && window.socket.connected) {
             window.socket.emit('instantGrowth', segments);
+        }
+    }
+    
+    applyInstantTeleport(playerId) {
+        // This would need to be handled by the game logic
+        if (window.socket && window.socket.connected) {
+            window.socket.emit('requestTeleport');
         }
     }
     
@@ -388,6 +462,78 @@ class PowerUpManager {
                 ctx.font = '16px Arial';
                 ctx.fillText('❄️', snowX, snowY);
             }
+            ctx.restore();
+        }
+        
+        // X-ray vision effect
+        if (effects.xrayVision) {
+            ctx.save();
+            ctx.strokeStyle = '#34495E';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.arc(x, y, 30, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Eye icon
+            ctx.globalAlpha = 1;
+            ctx.font = '20px Arial';
+            ctx.fillStyle = '#34495E';
+            ctx.textAlign = 'center';
+            ctx.fillText('👁️', x, y - 40);
+            ctx.restore();
+        }
+        
+        // Time slow effect
+        if (effects.timeSlow) {
+            ctx.save();
+            ctx.strokeStyle = '#8E44AD';
+            ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.4 + Math.sin(Date.now() * 0.01) * 0.2;
+            ctx.beginPath();
+            for (let i = 0; i < 3; i++) {
+                ctx.arc(x, y, 25 + i * 10, 0, Math.PI * 2);
+            }
+            ctx.stroke();
+            ctx.restore();
+        }
+        
+        // Clone effect indicator
+        if (effects.hasClone) {
+            ctx.save();
+            ctx.fillStyle = '#16A085';
+            ctx.globalAlpha = 0.3;
+            ctx.font = '18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('👥', x + 25, y - 25);
+            ctx.restore();
+        }
+        
+        // Treasure detector effect
+        if (effects.treasureDetector && effects.detectionRadius > 0) {
+            ctx.save();
+            ctx.strokeStyle = '#F39C12';
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.3;
+            ctx.setLineDash([8, 8]);
+            ctx.beginPath();
+            ctx.arc(x, y, effects.detectionRadius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Radar sweep effect
+            const sweepAngle = (Date.now() * 0.003) % (Math.PI * 2);
+            ctx.strokeStyle = '#F39C12';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(
+                x + Math.cos(sweepAngle) * effects.detectionRadius,
+                y + Math.sin(sweepAngle) * effects.detectionRadius
+            );
+            ctx.stroke();
             ctx.restore();
         }
     }

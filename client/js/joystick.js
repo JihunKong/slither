@@ -11,7 +11,10 @@ class VirtualJoystick {
         this.angle = 0;
         this.distance = 0;
         this.maxDistance = 60;
+        this.sensitivity = 1; // Default sensitivity
+        this.deadZone = 0.1; // Default dead zone
         
+        this.loadSettings();
         this.createJoystick();
         this.setupEventListeners();
         
@@ -24,6 +27,28 @@ class VirtualJoystick {
     isMobile() {
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
                (window.innerWidth <= 768);
+    }
+    
+    loadSettings() {
+        const sensitivity = localStorage.getItem('joystickSensitivity');
+        const deadZone = localStorage.getItem('joystickDeadZone');
+        
+        if (sensitivity !== null) {
+            this.sensitivity = parseFloat(sensitivity);
+        }
+        if (deadZone !== null) {
+            this.deadZone = parseFloat(deadZone);
+        }
+    }
+    
+    setSensitivity(value) {
+        this.sensitivity = Math.max(0.5, Math.min(3, value));
+        localStorage.setItem('joystickSensitivity', this.sensitivity);
+    }
+    
+    setDeadZone(value) {
+        this.deadZone = Math.max(0, Math.min(0.3, value));
+        localStorage.setItem('joystickDeadZone', this.deadZone);
     }
     
     createJoystick() {
@@ -167,10 +192,9 @@ class VirtualJoystick {
         this.angle = Math.atan2(deltaY, deltaX);
         this.distance = Math.min(Math.sqrt(deltaX * deltaX + deltaY * deltaY), this.maxDistance);
         
-        // Improved responsiveness with dead zone
+        // Improved responsiveness with configurable dead zone and sensitivity
         const normalizedDistance = this.distance / this.maxDistance;
-        const deadZone = 0.1;
-        const adjustedDistance = normalizedDistance < deadZone ? 0 : (normalizedDistance - deadZone) / (1 - deadZone);
+        const adjustedDistance = normalizedDistance < this.deadZone ? 0 : (normalizedDistance - this.deadZone) / (1 - this.deadZone);
         
         // Update knob position with smooth animation
         const knobX = Math.cos(this.angle) * this.distance;
@@ -178,9 +202,10 @@ class VirtualJoystick {
         
         this.knob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
         
-        // Emit change event with adjusted distance
+        // Emit change event with adjusted distance and sensitivity
         if (this.onChange && adjustedDistance > 0) {
-            this.onChange(this.angle, adjustedDistance);
+            const sensitizedDistance = Math.min(1, adjustedDistance * this.sensitivity);
+            this.onChange(this.angle, sensitizedDistance);
         }
     }
     

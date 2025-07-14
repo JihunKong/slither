@@ -22,6 +22,12 @@ class SwipeControls {
         const swipeEnabled = localStorage.getItem('snakeSwipeControls');
         this.enabled = swipeEnabled === 'true';
         
+        // Load sensitivity setting
+        const savedSensitivity = localStorage.getItem('swipeSensitivity');
+        if (savedSensitivity !== null) {
+            this.sensitivity = parseFloat(savedSensitivity);
+        }
+        
         if (this.enabled) {
             this.setupEventListeners();
         }
@@ -95,6 +101,7 @@ class SwipeControls {
     
     setSensitivity(value) {
         this.sensitivity = Math.max(0.5, Math.min(5, value));
+        localStorage.setItem('swipeSensitivity', this.sensitivity);
     }
     
     setOnChange(callback) {

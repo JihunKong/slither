@@ -371,6 +371,61 @@ function connectToServer() {
         }
     });
     
+    socket.on('userIdChangeSuccess', (data) => {
+        console.log('User ID changed successfully:', data);
+        userId = data.newUserId;
+        saveUserId(userId);
+        updateUserIdDisplay();
+        
+        // Reset button state
+        const updateUserIdBtn = document.getElementById('updateUserIdBtn');
+        if (updateUserIdBtn) {
+            updateUserIdBtn.textContent = '✓';
+            updateUserIdBtn.style.backgroundColor = '#4CAF50';
+            updateUserIdBtn.disabled = false;
+            
+            setTimeout(() => {
+                updateUserIdBtn.textContent = '변경';
+                updateUserIdBtn.style.backgroundColor = '#FF6B6B';
+            }, 2000);
+        }
+        
+        // Show success message
+        const successDiv = document.createElement('div');
+        successDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 10000;
+            font-size: 14px;
+        `;
+        successDiv.textContent = `사용자 ID가 "${data.newUserId}"로 변경되었습니다.`;
+        document.body.appendChild(successDiv);
+        
+        setTimeout(() => {
+            successDiv.remove();
+        }, 3000);
+    });
+    
+    socket.on('userIdChangeError', (data) => {
+        console.log('User ID change error:', data);
+        
+        // Reset button state
+        const updateUserIdBtn = document.getElementById('updateUserIdBtn');
+        if (updateUserIdBtn) {
+            updateUserIdBtn.textContent = '변경';
+            updateUserIdBtn.style.backgroundColor = '#FF6B6B';
+            updateUserIdBtn.disabled = false;
+        }
+        
+        // Show error message
+        showUserIdError(data.message || '사용자 ID 변경에 실패했습니다.');
+    });
+    
     socket.on('disconnect', (reason) => {
         console.log('Disconnected from server:', reason);
     });
@@ -378,8 +433,20 @@ function connectToServer() {
 
 function updateUserIdDisplay() {
     const userIdElement = document.getElementById('userId');
+    const userIdInput = document.getElementById('userIdInput');
+    
     if (userIdElement && userId) {
-        userIdElement.textContent = userId;
+        // Add badge to user ID display
+        if (window.playerBadgeManager && window.progressionManager) {
+            const level = window.progressionManager.level;
+            const badge = window.playerBadgeManager.getBadgeForLevel(level);
+            userIdElement.innerHTML = `${badge.emoji} <span style="color: ${badge.color};">${userId}</span> <span style="font-size: 12px; color: #888;">(Lv.${level})</span>`;
+        } else {
+            userIdElement.textContent = userId;
+        }
+    }
+    if (userIdInput && userId) {
+        userIdInput.value = userId;
     }
 }
 
@@ -593,14 +660,20 @@ function updateUI() {
         .sort((a, b) => (b.displayScore || b.score) - (a.displayScore || a.score))
         .slice(0, 5);
     
-    leaderboardList.innerHTML = sortedPlayers
-        .map((player, index) => `
-            <li>
-                <span>${index + 1}. ${player.name}</span>
-                <span>${player.displayScore || player.score}</span>
-            </li>
-        `)
-        .join('');
+    // Update leaderboard with badge system
+    if (window.playerBadgeManager) {
+        window.playerBadgeManager.updateLeaderboardWithBadges(leaderboardList, sortedPlayers);
+    } else {
+        // Fallback to original leaderboard
+        leaderboardList.innerHTML = sortedPlayers
+            .map((player, index) => `
+                <li>
+                    <span>${index + 1}. ${player.name}</span>
+                    <span>${player.displayScore || player.score}</span>
+                </li>
+            `)
+            .join('');
+    }
     
     // Update progression UI
     updateProgressionUI();
@@ -794,10 +867,31 @@ function drawSnake(snake) {
     ctx.arc(headX, headY, 7, 0, Math.PI * 2);
     ctx.fill();
     
+    // Draw player name with badge
     ctx.fillStyle = 'white';
     ctx.font = '12px Arial';
     ctx.textAlign = 'center';
-    ctx.fillText(snake.name, headX, headY - 15);
+    
+    if (window.playerBadgeManager) {
+        const level = window.playerBadgeManager.getPlayerLevel(snake);
+        const badge = window.playerBadgeManager.getBadgeForLevel(level);
+        
+        // Draw badge emoji above name
+        ctx.font = '10px Arial';
+        ctx.fillText(badge.emoji, headX, headY - 25);
+        
+        // Draw name
+        ctx.font = '12px Arial';
+        ctx.fillText(snake.name, headX, headY - 15);
+        
+        // Draw level
+        ctx.fillStyle = badge.color;
+        ctx.font = '9px Arial';
+        ctx.fillText(`Lv.${level}`, headX, headY - 5);
+    } else {
+        // Fallback to original name display
+        ctx.fillText(snake.name, headX, headY - 15);
+    }
     
     // Draw power-up indicators
     window.powerUpManager.drawPowerUpUI(ctx, snake, camera);
@@ -1157,6 +1251,68 @@ window.addEventListener('load', () => {
         }
     });
     
+    // User ID editing functionality
+    const updateUserIdBtn = document.getElementById('updateUserIdBtn');
+    const userIdInput = document.getElementById('userIdInput');
+    
+    updateUserIdBtn.addEventListener('click', () => {
+        const newUserId = userIdInput.value.trim();
+        if (newUserId && newUserId !== userId && validateUserId(newUserId)) {
+            window.soundManager.playClick();
+            
+            // Send request to server for validation and update
+            if (socket && socket.connected) {
+                socket.emit('requestUserIdChange', { 
+                    oldUserId: userId, 
+                    newUserId: newUserId 
+                });
+                
+                // Show loading state
+                updateUserIdBtn.textContent = '확인중...';
+                updateUserIdBtn.disabled = true;
+                updateUserIdBtn.style.backgroundColor = '#888';
+            }
+        } else if (!validateUserId(newUserId)) {
+            showUserIdError('사용자 ID는 3-15자의 영문, 숫자, 하이픈만 사용 가능합니다.');
+        }
+    });
+    
+    // Handle enter key for user ID
+    userIdInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            updateUserIdBtn.click();
+        }
+    });
+    
+    function validateUserId(id) {
+        // 3-15 characters, alphanumeric and hyphens only, must start with letter or number
+        const regex = /^[a-zA-Z0-9][a-zA-Z0-9-]{2,14}$/;
+        return regex.test(id) && !id.startsWith('-') && !id.endsWith('-');
+    }
+    
+    function showUserIdError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #f44336;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 10000;
+            font-size: 14px;
+            text-align: center;
+        `;
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
+        
+        setTimeout(() => {
+            errorDiv.remove();
+        }, 3000);
+    }
+    
     // Color picker
     document.querySelectorAll('.color-option').forEach(option => {
         option.addEventListener('click', () => {
@@ -1268,8 +1424,15 @@ window.addEventListener('load', () => {
                 const controlType = e.target.value;
                 localStorage.setItem('snakeControlType', controlType);
                 setupMobileControl(controlType);
+                updateControlSettingsVisibility(controlType);
             });
         });
+        
+        // Initialize control settings visibility
+        updateControlSettingsVisibility(savedControlType);
+        
+        // Setup slider controls
+        setupSliderControls();
     }
     
     function setupMobileControl(type) {
@@ -1318,6 +1481,75 @@ window.addEventListener('load', () => {
                 canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
                 canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
                 break;
+        }
+    }
+    
+    function updateControlSettingsVisibility(controlType) {
+        const joystickSettings = document.getElementById('joystickSettings');
+        const swipeSettings = document.getElementById('swipeSettings');
+        
+        if (joystickSettings) {
+            joystickSettings.style.display = controlType === 'joystick' ? 'block' : 'none';
+        }
+        if (swipeSettings) {
+            swipeSettings.style.display = controlType === 'swipe' ? 'block' : 'none';
+        }
+    }
+    
+    function setupSliderControls() {
+        // Joystick sensitivity slider
+        const joystickSensitivitySlider = document.getElementById('joystickSensitivity');
+        const joystickSensitivityValue = document.getElementById('joystickSensitivityValue');
+        const joystickDeadZoneSlider = document.getElementById('joystickDeadZone');
+        const joystickDeadZoneValue = document.getElementById('joystickDeadZoneValue');
+        
+        // Load saved values
+        const savedJoystickSensitivity = localStorage.getItem('joystickSensitivity') || '1';
+        const savedJoystickDeadZone = localStorage.getItem('joystickDeadZone') || '0.1';
+        
+        if (joystickSensitivitySlider) {
+            joystickSensitivitySlider.value = savedJoystickSensitivity;
+            joystickSensitivityValue.textContent = parseFloat(savedJoystickSensitivity).toFixed(1);
+            
+            joystickSensitivitySlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                joystickSensitivityValue.textContent = value.toFixed(1);
+                if (joystick) {
+                    joystick.setSensitivity(value);
+                }
+            });
+        }
+        
+        if (joystickDeadZoneSlider) {
+            joystickDeadZoneSlider.value = savedJoystickDeadZone;
+            joystickDeadZoneValue.textContent = parseFloat(savedJoystickDeadZone).toFixed(2);
+            
+            joystickDeadZoneSlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                joystickDeadZoneValue.textContent = value.toFixed(2);
+                if (joystick) {
+                    joystick.setDeadZone(value);
+                }
+            });
+        }
+        
+        // Swipe sensitivity slider
+        const swipeSensitivitySlider = document.getElementById('swipeSensitivity');
+        const swipeSensitivityValue = document.getElementById('swipeSensitivityValue');
+        
+        const savedSwipeSensitivity = localStorage.getItem('swipeSensitivity') || '2';
+        
+        if (swipeSensitivitySlider) {
+            swipeSensitivitySlider.value = savedSwipeSensitivity;
+            swipeSensitivityValue.textContent = parseFloat(savedSwipeSensitivity).toFixed(1);
+            
+            swipeSensitivitySlider.addEventListener('input', (e) => {
+                const value = parseFloat(e.target.value);
+                swipeSensitivityValue.textContent = value.toFixed(1);
+                if (window.swipeControls) {
+                    window.swipeControls.setSensitivity(value);
+                }
+            });
         }
     }
     
