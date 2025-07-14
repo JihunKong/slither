@@ -765,10 +765,16 @@ io.on('connection', (socket) => {
         let userId = existingUserId;
         let isNewUser = false;
         
-        // 유효한 기존 userId가 없으면 새로 생성
-        if (!userId || !userId.startsWith('Player')) {
+        // 유효한 기존 userId가 없거나 이미 다른 소켓에 연결된 경우 새로 생성
+        if (!userId || !userId.startsWith('Player') || userIdToSocket.has(userId)) {
             userId = generateUserId();
             isNewUser = true;
+        }
+        
+        // 기존 매핑 정리 (소켓이 이미 다른 userId와 연결된 경우)
+        const existingUserId2 = socketToUserId.get(socket.id);
+        if (existingUserId2) {
+            userIdToSocket.delete(existingUserId2);
         }
         
         // 매핑 업데이트
@@ -817,7 +823,7 @@ io.on('connection', (socket) => {
         }
         
         if (room.gameState.players.size >= room.maxPlayers) {
-            socket.emit('roomError', { message: '방이 가듍 찼습니다.' });
+            socket.emit('roomError', { message: '방이 가득 찼습니다.' });
             return;
         }
         
@@ -884,6 +890,18 @@ io.on('connection', (socket) => {
         
         if (!userId) return;
         
+        // 플레이어가 속한 방 찾기
+        const roomId = socketToRoom.get(socket.id);
+        let targetGameState = gameState; // 기본값
+        
+        if (roomId && rooms.has(roomId)) {
+            const room = rooms.get(roomId);
+            targetGameState = room.gameState;
+            console.log(`Player ${userId} joining game in room ${roomId}`);
+        } else {
+            console.log(`Player ${userId} joining legacy game (no room)`);
+        }
+        
         const snake = createSnake(socket.id);
         
         // Set name
@@ -900,38 +918,59 @@ io.on('connection', (socket) => {
         }
         
         snake.userId = userId;
-        gameState.players.set(socket.id, snake);
-    
-    // 첫 번째 플레이어가 방장
-    if (!gameState.roomHost) {
-        gameState.roomHost = socket.id;
-        console.log('Room host set to:', socket.id);
         
-        // Check if this is a solo room
-        const room = getRoomBySocketId(socket.id);
-        if (room && room.isSolo) {
-            // Auto-start solo games after a short delay
-            setTimeout(() => {
-                if (socket.id === gameState.roomHost && !gameState.gameStarted && gameState.players.size === 1) {
-                    gameState.gameStarted = true;
-                    gameState.gameStartTime = Date.now();
-                    console.log('Solo game auto-started');
-                    io.emit('gameStarted', {
-                        startTime: gameState.gameStartTime,
-                        playerCount: gameState.players.size
-                    });
-                }
-            }, 1000);
+        // 올바른 gameState에 플레이어 추가
+        targetGameState.players.set(socket.id, snake);
+        
+        // 호환성을 위해 전역 gameState에도 추가 (레거시 지원)
+        if (targetGameState !== gameState) {
+            gameState.players.set(socket.id, snake);
         }
-    }
+    
+        // 첫 번째 플레이어가 방장 (방별로 설정)
+        if (!targetGameState.roomHost) {
+            targetGameState.roomHost = socket.id;
+            console.log('Room host set to:', socket.id, 'in room:', roomId || 'legacy');
+            
+            // Check if this is a solo room
+            if (roomId) {
+                const room = rooms.get(roomId);
+                if (room && room.isSolo) {
+                    // Auto-start solo games after a short delay
+                    setTimeout(() => {
+                        if (socket.id === targetGameState.roomHost && !targetGameState.gameStarted && targetGameState.players.size === 1) {
+                            targetGameState.gameStarted = true;
+                            targetGameState.gameStartTime = Date.now();
+                            console.log('Solo game auto-started in room:', roomId);
+                            
+                            // 해당 방의 플레이어들에게만 알림
+                            targetGameState.players.forEach((player, playerId) => {
+                                const playerSocket = io.sockets.sockets.get(playerId);
+                                if (playerSocket) {
+                                    playerSocket.emit('gameStarted', {
+                                        startTime: targetGameState.gameStartTime,
+                                        playerCount: targetGameState.players.size
+                                    });
+                                }
+                            });
+                        }
+                    }, 1000);
+                }
+            }
+        }
+        
+        // 호환성을 위해 전역 gameState 방장도 설정
+        if (!gameState.roomHost) {
+            gameState.roomHost = socket.id;
+        }
     
         socket.emit('init', {
             playerId: socket.id,
             userId: userId,
             gameWidth: GAME_WIDTH,
             gameHeight: GAME_HEIGHT,
-            isHost: gameState.roomHost === socket.id,
-            gameStarted: gameState.gameStarted
+            isHost: targetGameState.roomHost === socket.id,
+            gameStarted: targetGameState.gameStarted
         });
     });
     

@@ -120,12 +120,18 @@ function connectToServer() {
         console.log('User ID assigned:', userId);
         updateUserIdDisplay();
         
-        // userId를 받은 후 게임 참가
-        socket.emit('joinGame', {
-            userId: userId,
-            name: playerName || userId,
-            color: playerColor
-        });
+        // 방 ID가 있는 경우에만 게임 참가 (방에서 온 경우)
+        const savedRoomId = localStorage.getItem('roomId');
+        if (savedRoomId) {
+            console.log('Joining game in room:', savedRoomId);
+            socket.emit('joinGame', {
+                userId: userId,
+                name: playerName || userId,
+                color: playerColor
+            });
+        } else {
+            console.log('No room ID found, not joining game');
+        }
     });
     
     socket.on('connect_error', (error) => {
