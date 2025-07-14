@@ -879,10 +879,7 @@ function drawSnake(snake) {
     });
     ctx.stroke();
     
-    const head = snake.segments[0];
-    const headX = head.x - camera.x;
-    const headY = head.y - camera.y;
-    
+    // head 변수는 이미 함수 시작에서 선언됨
     ctx.beginPath();
     ctx.arc(headX, headY, 7, 0, Math.PI * 2);
     ctx.fill();
